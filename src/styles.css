@@ -558,3 +558,23 @@ body.od-night .od-pop {
 @media (prefers-reduced-motion: reduce) {
   .od-clock .eyebrow, .od-clock h1, .od-clock .sub, .od-clock .why { animation: none; }
 }
+
+/* ---- the public app's header: no title, the day navigation leads ---- */
+.app header #header-actions { flex: 1; }
+.app header .od-head-actions { width: 100%; }
+
+/* centred: info | ‹ date › | settings, and the headline centred over the centred clock */
+body[data-layout=center] .od-head-actions { display: grid; grid-template-columns: 40px 1fr auto auto auto 1fr 40px; align-items: center; }
+body[data-layout=center] .od-head-actions > * { grid-row: 1; }
+body[data-layout=center] .od-head-actions > .od-info { grid-column: 1; justify-self: start; margin: 0; }
+body[data-layout=center] .od-head-actions > [aria-label="Previous day"] { grid-column: 3; }
+body[data-layout=center] .od-head-actions > .od-period { grid-column: 4; margin: 0; }
+body[data-layout=center] .od-head-actions > [aria-label="Next day"] { grid-column: 5; }
+body[data-layout=center] .od-head-actions > [aria-label="Settings"] { grid-column: 7; justify-self: end; margin: 0; }
+body[data-layout=center] .od-clock h1, body[data-layout=center] .od-clock .sub { text-align: center; }
+
+/* left: the date line sits right above the headline, on the same left edge; icons top right */
+body[data-layout=left] .od-head-actions { display: flex; align-items: center; justify-content: flex-start; }
+body[data-layout=left] .od-head-actions > [aria-label="Previous day"] { margin-left: -10px; }
+body[data-layout=left] .od-head-actions > [aria-label="Settings"] { margin-left: auto; }
+body[data-layout=left] .app header { margin-bottom: 0; }
