@@ -1,0 +1,69 @@
+# Build and publish to GitHub Pages, and keep the station data fresh.
+#
+# Environment Agency Abu Dhabi (EAD) publishes hourly station readings through an API the
+# browser can't call (no CORS). So every run first catches the mirror up (scripts/ead_sync.py)
+# on the `data` branch, then builds the site with the mirror copied in at data/air/.
+# The `data` branch holds a single commit, amended each run, so the repo doesn't grow.
+name: Build and deploy
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '7/20 * * * *' # every 20 minutes (GitHub may start it a few minutes late)
+  workflow_dispatch:
+
+permissions:
+  contents: write # push the refreshed station data
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the station data
+        uses: actions/checkout@v4
+        with:
+          ref: data
+          path: station-data
+
+      - name: Catch the station data up from EAD
+        run: EAD_DATA=station-data/air python3 scripts/ead_sync.py
+
+      - name: Save it (one amended commit on the data branch)
+        working-directory: station-data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "no new readings"; exit 0; fi
+          git commit --amend -m "EAD station readings, mirrored (updated $(date -u +%FT%TZ))"
+          git push --force origin HEAD:data
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Publish the station data with the site
+        run: mkdir -p dist/data && cp -r station-data/air dist/data/air
+
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4

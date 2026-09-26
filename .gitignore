@@ -1,0 +1,4 @@
+node_modules
+dist
+station-data
+*.tsbuildinfo
