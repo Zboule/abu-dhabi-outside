@@ -618,7 +618,7 @@ function HourDetail({ h, compact = false }: { h: Hour; th: Thresholds; compact?:
           ))}
           <div className="od-hd-raw">
             {h.airSrc === 'typical'
-              ? `3-year average (the median year): PM2.5 ${fmt(h.pm25)} · PM10 ${fmt(h.pm10)} µg/m³`
+              ? `Typical year, from the last 3 (a real reading from a year like it): PM2.5 ${fmt(h.pm25)} · PM10 ${fmt(h.pm10)} µg/m³`
               : h.airSrc === 'station'
               ? `Measured, median of 5 EAD stations: PM2.5 ${fmt(h.pm25)} · PM10 ${fmt(h.pm10)} · NO₂ ${fmt(h.no2)} µg/m³`
               : `Model: PM2.5 ${fmt(h.pm25)} · dust ${fmt(h.dust)} · PM10 ${fmt(h.pm10)} µg/m³ · US AQI ${fmt(h.usAqi)}`}
@@ -679,7 +679,7 @@ function RatingInfo({ th, sensitive, day }: { th: Thresholds; sensitive: boolean
         </tbody>
       </table>
       <p>
-        Hours {hh(day.from)} to {hh(day.to + 1)} (change in ⚙️ settings). Air: measured at EAD stations for past hours, the CAMS model about 5 days ahead, the 3-year average after that in the month views. With no air data an hour can be OK at best, never good.
+        Hours {hh(day.from)} to {hh(day.to + 1)} (change in ⚙️ settings). Air: measured at EAD stations for past hours, the CAMS model about 5 days ahead, a typical year after that in the month views, built from the last 3: as many dusty and polluted hours as a year usually has, placed in the season and time of day they usually happen. With no air data an hour can be OK at best, never good.
       </p>
       <p>
         Tile colour is the feels-like temperature. Hatching marks an hour where UV (☀️) or air (🫁) is in the avoid

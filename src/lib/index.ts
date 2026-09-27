@@ -263,8 +263,15 @@ function withAirOf(h: Hour, from: Hour, src: HourRaw['airSrc']): Hour {
  * Typical hours from several past years (each re-keyed onto the target dates). Each
  * year is rated on its own first, because the index is non-linear (NowCast, max of
  * sub-indices, thresholds): averaging concentrations first would flatten every dust
- * storm and ozone peak away. Heat and UV use the plain mean; air takes the year with
- * the median index, with that year's pollutants and driver.
+ * storm and ozone peak away. Heat and UV use the plain mean.
+ *
+ * Air: taking the middle year per hour would keep only what repeats on the same date,
+ * which erases dust storms (they hit on different dates every year). So the typical
+ * year carries the AVERAGE NUMBER of bad hours of each kind (dust, pollution), placed
+ * where they are most likely: every date x hour gets a likelihood from the past years
+ * (smoothed over nearby dates and hours), and the N most likely slots are the bad ones.
+ * Deterministic, in the probable season and time of day, and with a realistic total.
+ * Each hour then borrows real readings from a year (nearest in date) that matches.
  */
 export function enrichTypical(years: HourRaw[][], th: Thresholds): Hour[] {
   const perYear = years.map((y) => new Map(enrich(y, th).map((h) => [h.time, h])));
@@ -279,14 +286,62 @@ export function enrichTypical(years: HourRaw[][], th: Thresholds): Hour[] {
     }
     return out;
   });
-  return enrich(avg, th).map((h) => {
-    const hs = perYear
-      .map((m) => m.get(h.time))
-      .filter((x): x is Hour => !!x && x.adai != null)
-      .sort((a, b) => a.adai! - b.adai!);
-    return hs.length ? withAirOf(h, hs[(hs.length - 1) >> 1], 'typical') : h;
+  const base = enrich(avg, th);
+
+  // the hours are contiguous (Dubai has no DST), so neighbours are index offsets
+  const grid = perYear.map((m) => times.map((t) => m.get(t)));
+  const idx = new Map(times.map((t, i) => [t, i]));
+  const at = (k: number, time: string, dDay: number, dHour: number) => grid[k][idx.get(time)! + dDay * 24 + dHour];
+  const isDust = (h: Hour) => h.dustLevel === 'bad';
+  const isChem = (h: Hour) => h.chemLevel === 'bad';
+  const pick = (bad: (h: Hour) => boolean) => {
+    const counts = perYear.map((m) => [...m.values()].filter((h) => h.adai != null && bad(h)).length);
+    const n = Math.round(counts.reduce((a, b) => a + b, 0) / Math.max(1, counts.length));
+    if (!n) return new Set<string>();
+    const score = times.map((time) => {
+      let sum = 0;
+      let w = 0;
+      for (let dd = -TYP_DAYS; dd <= TYP_DAYS; dd++) {
+        for (let dh = -1; dh <= 1; dh++) {
+          const wt = (1 - Math.abs(dd) / (TYP_DAYS + 1)) * (dh ? 0.5 : 1);
+          for (let k = 0; k < perYear.length; k++) {
+            const h = at(k, time, dd, dh);
+            if (!h || h.adai == null) continue;
+            w += wt;
+            if (bad(h)) sum += wt;
+          }
+        }
+      }
+      return { time, p: w ? sum / w : 0 };
+    });
+    return new Set(score.filter((x) => x.p > 0).sort((a, b) => b.p - a.p || (a.time < b.time ? -1 : 1)).slice(0, n).map((x) => x.time));
+  };
+  const dustSet = pick(isDust);
+  const chemSet = pick(isChem);
+
+  return base.map((h) => {
+    const wantDust = dustSet.has(h.time);
+    const wantChem = chemSet.has(h.time);
+    const fits = (x: Hour | undefined): x is Hour => !!x && x.adai != null && isDust(x) === wantDust && isChem(x) === wantChem;
+    // the same slot first (the middle year among those that fit), then the nearest dates and hours
+    const same = perYear.map((m) => m.get(h.time)).filter(fits).sort((a, b) => a.adai! - b.adai!);
+    if (same.length) return withAirOf(h, same[(same.length - 1) >> 1], 'typical');
+    for (let dd = 1; dd <= 3 * TYP_DAYS; dd++) {
+      for (const d of [-dd, dd]) {
+        for (const dh of [0, -1, 1]) {
+          for (let k = 0; k < perYear.length; k++) {
+            const x = at(k, h.time, d, dh);
+            if (fits(x)) return withAirOf(h, x, 'typical');
+          }
+        }
+      }
+    }
+    const any = perYear.map((m) => m.get(h.time)).filter((x): x is Hour => !!x && x.adai != null).sort((a, b) => a.adai! - b.adai!);
+    return any.length ? withAirOf(h, any[(any.length - 1) >> 1], 'typical') : h;
   });
 }
+/** Days either side (and ±1 hour) that a typical hour's likelihood looks at. */
+const TYP_DAYS = 7;
 
 /**
  * Forecast / measured hours first; where they have no air (the air forecast stops ~5
