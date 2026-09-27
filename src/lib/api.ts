@@ -184,6 +184,22 @@ function airMonth(m: string): Promise<AirMonth | null> {
 }
 
 /**
+ * Hours where a station's sensor looks stuck: its last 24 readings (this one included) stay
+ * within 6 µg/m³. Real PM never holds that still for a day; a frozen sensor does (Mussafah's
+ * PM2.5 sat at ~51 for weeks in Sept 2026).
+ */
+function stuckHours(rows: [string, (number | null)[]][], i: number): Set<string> {
+  const out = new Set<string>();
+  if (i < 0) return out;
+  const vals = rows.map(([, v]) => (v[i] != null && v[i]! > 0 ? v[i]! : null));
+  for (let n = 0; n < rows.length; n++) {
+    const win = vals.slice(Math.max(0, n - 23), n + 1).filter((x): x is number => x != null);
+    if (win.length >= 18 && Math.max(...win) - Math.min(...win) <= 6) out.add(rows[n][0]);
+  }
+  return out;
+}
+
+/**
  * Hourly station medians for [start, end] (Dubai dates), keyed like HourRaw.time.
  * Never throws: a missing month (before 2023, a stale mirror) just leaves those hours to the model.
  */
@@ -204,13 +220,17 @@ export async function fetchStations(start: string, end: string): Promise<Map<str
     const [iPm25, iPm10, iO3, iNo2, iSo2, iCo] = ['pM25', 'pM10', 'o3', 'nO2', 'sO2', 'co'].map(f);
     const by = new Map<string, { pm25: number[]; pm10: number[]; o3: number[]; no2: number[]; so2: number[]; co: number[] }>();
     for (const s of EAD_STATIONS) {
-      for (const [k, v] of Object.entries(doc.hours[s] ?? {})) {
+      const rows = Object.entries(doc.hours[s] ?? {}).sort(([a], [b]) => (a < b ? -1 : 1));
+      const stuck25 = stuckHours(rows, iPm25);
+      const stuck10 = stuckHours(rows, iPm10);
+      for (const [k, v] of rows) {
         if (k < lo || k > hi) continue;
         const b = by.get(k) ?? by.set(k, { pm25: [], pm10: [], o3: [], no2: [], so2: [], co: [] }).get(k)!;
         // EAD logs a missing reading as 0 (Hamdan St and Mussafah have no ozone sensor, outages are 0 too)
         const x = (i: number) => (i >= 0 && v[i] != null && v[i]! > 0 ? v[i]! : null);
-        const pm25 = x(iPm25);
-        const pm10 = x(iPm10);
+        // a sensor that has barely moved for a day is stuck, not reading the air
+        const pm25 = stuck25.has(k) ? null : x(iPm25);
+        const pm10 = stuck10.has(k) ? null : x(iPm10);
         // PM2.5 above PM10 is a broken instrument, not air
         if (pm25 != null && (pm10 == null || pm25 <= 1.2 * pm10 + 10)) b.pm25.push(pm25);
         if (pm10 != null) b.pm10.push(pm10);

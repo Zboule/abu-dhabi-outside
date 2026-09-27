@@ -7,7 +7,7 @@
 // admissions), just less per microgram. So the index:
 //
 //  1. estimates the dust share of PM2.5: from the measured coarse fraction on station
-//     hours (see DUST_FINE_OF_COARSE in api.ts), from CAMS dust (DUST_FINE_FRACTION)
+//     and model hours alike (DUST_FINE_OF_COARSE in api.ts; CAMS dust, DUST_FINE_FRACTION, only without PM10)
 //     on model hours.
 //  2. rates POLLUTION: the non-dust PM2.5 (EPA PM2.5 breakpoints, 2024 revision) and
 //     O3, NO2, SO2, CO on their EPA scales, max of them. Strict limits (airGood/airOk).
@@ -19,7 +19,7 @@
 // PM uses the EPA NowCast (weighted 12h average, as AirNow does for hourly values);
 // O3 and CO use 8h means (their breakpoints are 8h); NO2 and SO2 are hourly.
 
-import type { HourRaw } from './api';
+import { DUST_FINE_OF_COARSE, type HourRaw } from './api.ts';
 
 /**
  * Dust share of PM2.5 per unit of CAMS "dust" (model hours). A regression of CAMS PM2.5 on
@@ -169,7 +169,18 @@ function verdictOf(heat: Level, uvLevel: Level, air: Level): Level {
 
 export function enrich(raw: HourRaw[], th: Thresholds): Hour[] {
   // dust share of PM2.5: measured hours know it from their coarse fraction, model hours from CAMS dust
-  const fineDust = raw.map((h) => (h.fineDust != null ? h.fineDust : h.dust != null ? DUST_FINE_FRACTION * h.dust : null));
+  // dust share of PM2.5, the same rule for measured and model hours: a share of the coarse
+  // fraction (PM10 - PM2.5). The old model-hour rule (a tenth of CAMS dust) counted ~7x less
+  // dust and overstated the forecast by 10-20 points; it's only the fallback without PM10.
+  const fineDust = raw.map((h) =>
+    h.fineDust != null
+      ? h.fineDust
+      : h.pm10 != null && h.pm25 != null
+        ? DUST_FINE_OF_COARSE * Math.max(0, h.pm10 - h.pm25)
+        : h.dust != null
+          ? DUST_FINE_FRACTION * h.dust
+          : null,
+  );
   const nonDust = raw.map((h, i) => (h.pm25 == null || fineDust[i] == null ? null : Math.max(0, h.pm25 - fineDust[i]!)));
   const dust10 = raw.map((h, i) => (h.pm10 == null || nonDust[i] == null ? null : Math.max(0, h.pm10 - nonDust[i]!)));
   const o3s = raw.map((r) => r.o3);
