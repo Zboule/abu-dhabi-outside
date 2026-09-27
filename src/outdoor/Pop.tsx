@@ -106,10 +106,12 @@ export function usePop() {
   const api = useContext(PopCtx)!;
   return useCallback(
     (render: () => ReactNode) => ({
-      onMouseEnter: (e: React.MouseEvent<HTMLElement>) => {
-        if (!api.current()?.pinned) api.show(e.currentTarget, render(), false);
+      // hover is for a real mouse only: iOS turns a first tap into a "hover" (and then a
+      // second tap into the click), which left the card open when tapping the same tile again
+      onPointerEnter: (e: React.PointerEvent<HTMLElement>) => {
+        if (e.pointerType === 'mouse' && !api.current()?.pinned) api.show(e.currentTarget, render(), false);
       },
-      onMouseLeave: (e: React.MouseEvent<HTMLElement>) => api.hide(e.currentTarget),
+      onPointerLeave: (e: React.PointerEvent<HTMLElement>) => e.pointerType === 'mouse' && api.hide(e.currentTarget),
       onClick: (e: React.MouseEvent<HTMLElement>) => {
         const cur = api.current();
         if (cur?.pinned && cur.anchor === e.currentTarget) api.close();
