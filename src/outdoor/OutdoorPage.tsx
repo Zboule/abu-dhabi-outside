@@ -618,7 +618,7 @@ function HourDetail({ h, compact = false }: { h: Hour; th: Thresholds; compact?:
           ))}
           <div className="od-hd-raw">
             {h.airSrc === 'typical'
-              ? `Typical year, from the last 3 (a real reading from a year like it): PM2.5 ${fmt(h.pm25)} · PM10 ${fmt(h.pm10)} µg/m³`
+              ? `Typical year, a real reading from the last 3: PM2.5 ${fmt(h.pm25)} · PM10 ${fmt(h.pm10)} µg/m³`
               : h.airSrc === 'station'
               ? `Measured, median of 5 EAD stations: PM2.5 ${fmt(h.pm25)} · PM10 ${fmt(h.pm10)} · NO₂ ${fmt(h.no2)} µg/m³`
               : `Model: PM2.5 ${fmt(h.pm25)} · dust ${fmt(h.dust)} · PM10 ${fmt(h.pm10)} µg/m³ · US AQI ${fmt(h.usAqi)}`}
@@ -679,7 +679,7 @@ function RatingInfo({ th, sensitive, day }: { th: Thresholds; sensitive: boolean
         </tbody>
       </table>
       <p>
-        Hours {hh(day.from)} to {hh(day.to + 1)} (change in ⚙️ settings). Air: measured at EAD stations for past hours, the CAMS model about 5 days ahead, a typical year after that in the month views, built from the last 3: as many dusty and polluted hours as a year usually has, placed in the season and time of day they usually happen. With no air data an hour can be OK at best, never good.
+        Hours {hh(day.from)} to {hh(day.to + 1)} (change in ⚙️ settings). Air: measured at EAD stations for past hours, the CAMS model about 5 days ahead, a typical year after that in the month views: an example year built from real episodes of the last 3, with as many dusty and polluted hours as a year usually has, in the season and hours they usually happen. With no air data an hour can be OK at best, never good.
       </p>
       <p>
         Tile colour is the feels-like temperature. Hatching marks an hour where UV (☀️) or air (🫁) is in the avoid
@@ -1189,19 +1189,30 @@ function Tiles(props: {
 }
 const RANK_OF: Record<Level, number> = { good: 0, na: 0, ok: 1, bad: 2 };
 
-type TileCell = { i: number; h?: DaySummary['hours'][number]; col: RGB; sun: boolean; air: '' | ' air' | ' dust' };
+type TileCell = {
+  i: number;
+  h?: DaySummary['hours'][number];
+  col: RGB;
+  sun: boolean;
+  air: '' | ' air' | ' dust';
+  /** how strongly each effect is drawn (0..1): 1 for a bad hour, the likelihood for a typical one */
+  fx: { sun: number; air: number; dust: number };
+};
 /** One day's shown hours with what the tiles draw: heat colour, strong sun, and the air effect. */
 function tileRow(d: DaySummary, shown: number[]): TileCell[] {
   return shown.map((i) => {
     const h = d.hours.find((x) => x.hour === i);
-    if (!h) return { i, col: [60, 60, 67] as RGB, sun: false, air: '' as const };
+    if (!h) return { i, col: [60, 60, 67] as RGB, sun: false, air: '' as const, fx: { sun: 0, air: 0, dust: 0 } };
+    const sun = !h.night && h.uvLevel === 'bad';
     const dusty = h.dustLevel === 'bad' && RANK_OF[h.dustLevel] >= RANK_OF[h.chemLevel];
+    const fx = { sun: sun ? 1 : 0, air: h.air === 'bad' && !dusty ? 1 : 0, dust: h.air === 'bad' && dusty ? 1 : 0 };
     return {
       i,
       h,
       col: h.feels == null ? ([60, 60, 67] as RGB) : heatRGB(h.feels),
-      sun: !h.night && h.uvLevel === 'bad',
-      air: h.air === 'bad' ? (dusty ? ' dust' : ' air') : '',
+      sun,
+      air: fx.dust >= 0.5 && fx.dust >= fx.air ? ' dust' : fx.air >= 0.5 ? ' air' : '',
+      fx,
     };
   });
 }
@@ -1216,13 +1227,13 @@ function TileStrip({ row, hw, past, children }: { row: TileCell[]; hw: number; p
   const n = row.length;
   const heat = `linear-gradient(to right, ${row.map((c, k) => `${rgb(c.h ? c.col : EMPTY_RGB)} ${(((k + 0.5) / n) * 100).toFixed(2)}%`).join(', ')})`;
   const spill = hw * 0.35;
-  const runs: { kind: string; from: number; to: number }[] = [];
-  for (const kindOf of [(c: TileCell) => (c.sun ? 'sun' : ''), (c: TileCell) => c.air.trim()]) {
+  const runs: { kind: 'sun' | 'air' | 'dust'; from: number; to: number }[] = [];
+  for (const kind of ['sun', 'air', 'dust'] as const) {
     row.forEach((c, k) => {
-      const kind = c.h ? kindOf(c) : '';
+      if (!c.h || !c.fx[kind]) return;
       const last = runs[runs.length - 1];
-      if (kind && last && last.kind === kind && last.to === k - 1) last.to = k;
-      else if (kind) runs.push({ kind, from: k, to: k });
+      if (last && last.kind === kind && last.to === k - 1) last.to = k;
+      else runs.push({ kind, from: k, to: k });
     });
   }
   const pastN = row.filter((c) => c.h && past(c)).length;
@@ -1232,12 +1243,16 @@ function TileStrip({ row, hw, past, children }: { row: TileCell[]; hw: number; p
         const fl = r.from > 0 ? spill : 0;
         const fr = r.to < n - 1 ? spill : 0;
         const left = r.from * hw - fl;
-        const mask = `linear-gradient(to right, ${fl ? 'transparent' : '#000'}, #000 ${2 * fl}px, #000 calc(100% - ${2 * fr}px), ${fr ? 'transparent' : '#000'})`;
+        // each hour's strength (a typical hour's likelihood) at its centre, faded out at the ends
+        const w = (r.to - r.from + 1) * hw + fl + fr;
+        const stops = row.slice(r.from, r.to + 1).map((c, j) => `rgba(0,0,0,${c.fx[r.kind].toFixed(2)}) ${(fl + (j + 0.5) * hw).toFixed(1)}px`);
+        const edge = (a: number) => `rgba(0,0,0,${a.toFixed(2)})`;
+        const mask = `linear-gradient(to right, ${fl ? 'transparent 0' : `${edge(row[r.from].fx[r.kind])} 0`}, ${stops.join(', ')}, ${fr ? `transparent ${w.toFixed(1)}px` : `${edge(row[r.to].fx[r.kind])} ${w.toFixed(1)}px`})`;
         return (
           <i
             key={`${r.kind}${r.from}`}
             className={`od-tl-run fx-${r.kind}`}
-            style={{ left, width: (r.to - r.from + 1) * hw + fl + fr, backgroundPositionX: -left, WebkitMaskImage: mask, maskImage: mask }}
+            style={{ left, width: w, backgroundPositionX: -left, WebkitMaskImage: mask, maskImage: mask }}
           />
         );
       })}
@@ -1306,8 +1321,9 @@ function HourCard({ h }: { h: Hour }) {
       ))}
       <div className="od-hc-src">
         {fmt(h.temp, 0, '°')} air · {fmt(h.humidity, 0, '%')} humidity ·{' '}
-        {h.airSrc === 'station' ? 'air measured at 5 EAD stations' : h.airSrc === 'typical' ? '3-year average' : 'forecast'}
+        {h.airSrc === 'station' ? 'air measured at 5 EAD stations' : h.airSrc === 'typical' ? 'typical year' : 'forecast'}
       </div>
+
     </div>
   );
 }
