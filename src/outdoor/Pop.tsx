@@ -64,7 +64,9 @@ export function PopProvider({ children }: { children: ReactNode }) {
     if (!st) return;
     const onDown = (e: PointerEvent) => {
       const t = e.target as Element;
-      if (box.current?.contains(t) || st.anchor.contains(t)) return;
+      // another anchor swaps the content in place (its click shows it), so the sheet
+      // doesn't close and replay its opening animation between hours
+      if (box.current?.contains(t) || t.closest?.('[data-pop]')) return;
       setSt(null);
     };
     const onScroll = (e: Event) => {
@@ -106,6 +108,7 @@ export function usePop() {
   const api = useContext(PopCtx)!;
   return useCallback(
     (render: () => ReactNode) => ({
+      'data-pop': '',
       // hover is for a real mouse only: iOS turns a first tap into a "hover" (and then a
       // second tap into the click), which left the card open when tapping the same tile again
       onPointerEnter: (e: React.PointerEvent<HTMLElement>) => {
