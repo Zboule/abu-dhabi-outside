@@ -1010,7 +1010,7 @@ function Tiles(props: {
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    const measure = () => setFitW(Math.max(6, (el.clientWidth - 24 - CAP_PAD - CAP - MON) / (dayTo - dayFrom + 1))); // the side padding (24)
+    const measure = () => setFitW(Math.max(6, (el.clientWidth - 24 - CAP_PAD - CAP - Math.max(0, MON - 10)) / (dayTo - dayFrom + 1))); // the side padding (24); the month strip sits 10px into the left padding
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
