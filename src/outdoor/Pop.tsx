@@ -9,11 +9,13 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { Drawer } from 'vaul';
 
 // One shared popover for the Outdoor page: hover shows it (desktop), a tap pins it
 // (phone, where there is no hover). Fixed-positioned and clamped to the viewport so
 // it never runs off the side of a 390px screen, and flips above the anchor when
-// there is no room below.
+// there is no room below. On a phone the tap opens a bottom sheet instead (vaul): drag it
+// down to dismiss, with a proper slide-out, and tapping another hour swaps it in place.
 
 interface PopState {
   anchor: HTMLElement;
@@ -38,16 +40,25 @@ export function PopProvider({ children }: { children: ReactNode }) {
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   // a tap on a phone opens a bottom sheet; hover (desktop) keeps the floating card
   const sheet = !!st?.pinned && window.innerWidth <= 640;
+  // the sheet closes by animating out first (open=false), and only then lets go of the content
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const sheetRef = useRef(false);
+  sheetRef.current = sheet;
 
   const api = useRef<PopApi>({
-    show: (anchor, content, pinned) => setSt({ anchor, content, pinned }),
+    show: (anchor, content, pinned) => {
+      setSt({ anchor, content, pinned });
+      if (pinned) setSheetOpen(true);
+    },
     hide: (anchor) => setSt((s) => (s && s.anchor === anchor && !s.pinned ? null : s)),
-    close: () => setSt(null),
-    current: () => stRef.current,
+    close: () => (sheetRef.current ? setSheetOpen(false) : setSt(null)),
+    current: () => (sheetRef.current && !sheetOpenRef.current ? null : stRef.current),
   }).current;
+  const sheetOpenRef = useRef(false);
+  sheetOpenRef.current = sheetOpen;
 
   useLayoutEffect(() => {
-    if (!st || !box.current) return setPos(null);
+    if (!st || sheet || !box.current) return setPos(null);
     const r = st.anchor.getBoundingClientRect();
     const w = box.current.offsetWidth;
     const h = box.current.offsetHeight;
@@ -61,7 +72,7 @@ export function PopProvider({ children }: { children: ReactNode }) {
 
   // a pinned popover closes on a tap elsewhere, on scroll, or on Escape
   useEffect(() => {
-    if (!st) return;
+    if (!st || sheet) return; // the sheet has its own dismissal (drag, tap outside, Escape)
     const onDown = (e: PointerEvent) => {
       const t = e.target as Element;
       // another anchor swaps the content in place (its click shows it), so the sheet
@@ -87,13 +98,39 @@ export function PopProvider({ children }: { children: ReactNode }) {
   return (
     <PopCtx.Provider value={api}>
       {children}
+      {sheet && (
+        <Drawer.Root
+          open={sheetOpen}
+          onOpenChange={(o) => !o && setSheetOpen(false)}
+          onAnimationEnd={(o) => !o && setSt(null)}
+          modal={false}
+        >
+          <Drawer.Portal>
+            <Drawer.Content
+              className="od-pop sheet"
+              aria-describedby={undefined}
+              onOpenAutoFocus={(e) => e.preventDefault()}
+              // non-modal vaul never closes on an outside tap, so do it here; another hour's tap
+              // swaps the content in place instead (its click shows it)
+              onPointerDownOutside={(e) => {
+                if (!(e.target as Element).closest?.('[data-pop]')) setSheetOpen(false);
+              }}
+            >
+              <Drawer.Handle className="od-sheet-handle" />
+              <Drawer.Title className="od-sr">Details</Drawer.Title>
+              <div className="od-sheet-body">{st.content}</div>
+            </Drawer.Content>
+          </Drawer.Portal>
+        </Drawer.Root>
+      )}
       {st &&
+        !sheet &&
         createPortal(
           <div
             ref={box}
-            className={`od-pop${sheet ? ' sheet' : ''}`}
+            className="od-pop"
             role="tooltip"
-            style={sheet ? undefined : pos ? { left: pos.left, top: pos.top } : { left: -9999, top: 0 }}
+            style={pos ? { left: pos.left, top: pos.top } : { left: -9999, top: 0 }}
           >
             {st.content}
           </div>,

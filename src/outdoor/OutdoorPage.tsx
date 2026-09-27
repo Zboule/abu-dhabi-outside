@@ -1001,18 +1001,20 @@ function Tiles(props: {
   const scroller = useRef<HTMLDivElement>(null);
   const [zoom, setZoomState] = useState(readZoom);
   const [fitW, setFitW] = useState(0);
-  const CAP = compact ? 50 : 50;
+  // long ranges: a thin vertical month strip (MON) + a narrow date column, to leave the width to the hours
+  const MON = compact ? 16 : 0;
+  const CAP = compact ? 22 : 50;
 
   // the hour width that fits all 24 in the screen; zoom multiplies it
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    const measure = () => setFitW(Math.max(6, (el.clientWidth - 24 - 8 - CAP) / (dayTo - dayFrom + 1))) // the side padding (24) and the day name's own (8);
+    const measure = () => setFitW(Math.max(6, (el.clientWidth - 24 - 8 - CAP - MON) / (dayTo - dayFrom + 1))); // the side padding (24) and the day name's own (8)
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [CAP, dayFrom, dayTo]);
+  }, [CAP, MON, dayFrom, dayTo]);
   const hw = fitW * zoom;
 
   // zoom around a point (x within the scroller), keeping the hour under it in place
@@ -1104,9 +1106,10 @@ function Tiles(props: {
       <div
         className={`od-tl-scroll${compact ? ' compact' : ''}${dateOnly ? ' year' : ''}`}
         ref={scroller}
-        style={{ '--hw': `${hw}px`, '--cap': `${CAP}px` } as React.CSSProperties}
+        style={{ '--hw': `${hw}px`, '--cap': `${CAP}px`, '--mon': `${MON}px` } as React.CSSProperties}
       >
         <div className="od-tl-axis">
+          {MON > 0 && <span className="od-tl-monv" />}
           <span className="od-tl-cap" />
           {shown.map((i) => (
             <span key={i} className="od-tl-tick">
@@ -1114,12 +1117,9 @@ function Tiles(props: {
             </span>
           ))}
         </div>
-        {days.map((d, n) => {
-          // long ranges: the weekday means little there, the month does. Its name is shown once,
-          // on its first row, with a gap above it; the rows below only carry the date.
-          const newMonth = n === 0 || d.day.slice(0, 7) !== days[n - 1].day.slice(0, 7);
-          return (
-          <div className={`od-tl-row${compact && newMonth && n > 0 ? ' mstart' : ''}`} key={d.day}>
+        {(() => {
+          const renderRow = (d: DaySummary) => (
+          <div className="od-tl-row" key={d.day}>
             <button
               type="button"
               className={`od-tl-cap${compact ? ' dated' : ''}${d.day === today ? ' today' : ''}`}
@@ -1127,7 +1127,6 @@ function Tiles(props: {
             >
               {compact ? (
                 <>
-                  <span className="od-tl-mon">{newMonth ? MONTH[Number(d.day.slice(5, 7)) - 1] : ''}</span>
                   <span className="od-tl-dn">
                     {(() => {
                       // the year's 9px rows: every date would be a wall of numbers, so a few landmarks
@@ -1167,7 +1166,22 @@ function Tiles(props: {
             </TileStrip>
           </div>
           );
-        })}
+          if (!compact) return days.map(renderRow);
+          // long ranges: the weekday means little, the month does. Each month is a block with its
+          // name once, rotated and centred down a thin strip on the left; the rows carry the date.
+          const months: DaySummary[][] = [];
+          for (const d of days) {
+            const last = months[months.length - 1];
+            if (last && last[0].day.slice(0, 7) === d.day.slice(0, 7)) last.push(d);
+            else months.push([d]);
+          }
+          return months.map((g) => (
+            <div className="od-tl-mgroup" key={g[0].day.slice(0, 7)}>
+              <span className="od-tl-monv">{g.length >= 3 && <span>{MONTH[Number(g[0].day.slice(5, 7)) - 1]}</span>}</span>
+              <div>{g.map(renderRow)}</div>
+            </div>
+          ));
+        })()}
       </div>
     </div>
   );

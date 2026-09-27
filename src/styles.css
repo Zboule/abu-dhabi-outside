@@ -275,12 +275,15 @@ html { scrollbar-gutter: stable; }
 .od-hd-raw { color: var(--muted); font-size: 11px; margin-top: 4px; }
 .od-tip { max-width: 300px; }
 .od-pop.sheet {
-  left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto; max-height: 80vh;
-  border-radius: 18px 18px 0 0; border-bottom: 0; padding: 10px 16px calc(16px + env(safe-area-inset-bottom));
-  box-shadow: 0 -10px 40px #0005; animation: od-sheet-in 0.18s ease-out;
+  position: fixed; left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto; max-width: none; max-height: 82vh;
+  display: flex; flex-direction: column; outline: none;
+  border-radius: 18px 18px 0 0; border-bottom: 0; padding: 0 16px calc(16px + env(safe-area-inset-bottom));
+  box-shadow: 0 -10px 40px #0005;
 }
-.od-pop.sheet::before { content: ''; display: block; width: 36px; height: 4px; border-radius: 2px; background: var(--border); margin: 0 auto 10px; }
-@keyframes od-sheet-in { from { transform: translateY(24px); opacity: 0; } }
+/* vaul's handle (grab it or anywhere on the sheet and pull down to close) */
+.od-pop.sheet .od-sheet-handle { width: 40px !important; height: 5px !important; border-radius: 3px; background: var(--border) !important; opacity: 1 !important; margin: 8px auto 10px !important; flex: none; }
+.od-sheet-body { overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
+.od-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .od-tip .od-hd { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); gap: 6px; }
 .od-mini-seg { display: inline-flex; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 2px; gap: 2px; }
 .od-mini-seg button { appearance: none; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 6px; cursor: pointer; }
@@ -658,13 +661,22 @@ body[data-layout=left] .app header { margin-bottom: 0; }
 .od-tl-scroll.compact .od-tl-cap { font-size: 11px; }
 .od-tl-scroll.year .od-tl-cell { height: 9px; }
 .od-tl-scroll.year .od-tl-cap { font-size: 9px; }
-/* long ranges: month on its first row, then only the date, right-aligned */
-.od-tl-cap.dated { justify-content: space-between; gap: 4px; font-variant-numeric: tabular-nums; }
-.od-tl-mon { color: var(--text); font-weight: 700; }
-.od-tl-dn { min-width: 2ch; text-align: right; }
+/* long ranges: one block per month, its name rotated and centred down a thin sticky strip,
+   then only the date on each row */
+.od-tl-mgroup { display: flex; width: max-content; }
+.od-tl-mgroup + .od-tl-mgroup { margin-top: 6px; }
+.od-tl-monv {
+  position: sticky; left: -12px; z-index: 7; flex: none; width: var(--mon); margin-left: -12px; padding-left: 12px; box-sizing: content-box;
+  background: var(--bg); display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.od-tl-monv > span { writing-mode: vertical-rl; transform: rotate(180deg); font: 700 12px/1 -apple-system, system-ui; letter-spacing: .04em; color: var(--text); white-space: nowrap; }
+/* the date column sits right after the month strip */
+.od-tl-scroll.compact .od-tl-cap { left: var(--mon); margin-left: 0; padding-left: 0; }
+.od-tl-scroll.compact .od-tl-axis .od-tl-cap { left: auto; }
+.od-tl-cap.dated { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+.od-tl-dn { text-align: right; }
 .od-tl-cap.today .od-tl-dn { color: var(--text); font-weight: 800; }
-.od-tl-cap.today .od-tl-dn::before { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--text); margin-right: 3px; vertical-align: middle; }
-.od-tl-scroll.compact .od-tl-row.mstart { margin-top: 6px; }
+.od-tl-cap.today .od-tl-dn::before { content: ''; display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: var(--text); margin-right: 2px; vertical-align: middle; }
 
 .od-hc { display: flex; flex-direction: column; min-width: 250px; }
 .od-hc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 15px; font-weight: 700; }
