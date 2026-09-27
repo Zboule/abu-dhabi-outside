@@ -618,7 +618,7 @@ body[data-layout=left] .app header { margin-bottom: 0; }
 .od-tl-tick { flex: none; width: var(--hw); font-size: 10px; color: var(--muted); padding: 0 0 4px 2px; white-space: nowrap; overflow: visible; }
 .od-tl-cell {
   flex: none; width: var(--hw); height: 40px; position: relative; border: 0; padding: 0; margin: 0; cursor: pointer;
-  appearance: none; display: grid; place-items: center; overflow: hidden;
+  appearance: none; display: grid; place-items: center;
 }
 .od-tl-cell.empty { background: rgba(255, 255, 255, .04); cursor: default; }
 .od-tl-cell > span { position: relative; z-index: 2; font: 700 11px/1 -apple-system, system-ui; color: #fff; text-shadow: 0 1px 2px #0008; }
@@ -627,7 +627,15 @@ body[data-layout=left] .app header { margin-bottom: 0; }
 /* sun too strong / bad air: a solid bar per problem along the bottom of the hour
    (stacked when both), plus the clock's row symbols when the hour is wide enough */
 .od-tl-cell > .od-mk { position: absolute; inset: 0; z-index: 1; pointer-events: none; text-shadow: none; }
-.od-mk > i { position: absolute; inset: 0; }
+.od-mk > i {
+  /* where the neighbour differs (--fl / --fr), the effect spills 35% of an hour past the edge
+     and fades across 70%, so it melts into the next hour instead of stopping at a line */
+  --spill: calc(var(--hw) * .35);
+  position: absolute; top: 0; bottom: 0;
+  left: calc(var(--fl, 0) * var(--spill) * -1); right: calc(var(--fr, 0) * var(--spill) * -1);
+  --hm: linear-gradient(to right, transparent, #000 calc(var(--fl, 0) * var(--spill) * 2), #000 calc(100% - var(--fr, 0) * var(--spill) * 2), transparent);
+  -webkit-mask-image: var(--hm); mask-image: var(--hm);
+}
 /* The effects take over the heat colour on purpose: an hour you should not be out in reads
    as blinding sun, a toxic cloud or a sand storm. Clouds and storm streaks are one texture
    shifted by the hour's index (--i), so a run of bad hours reads as one continuous cloud. */
@@ -654,10 +662,14 @@ body[data-layout=left] .app header { margin-bottom: 0; }
   background-size: auto, 100px 100%, 100px 100%, auto; background-repeat: repeat, repeat-x, repeat-x, no-repeat;
 }
 /* after the shorthands above, which would reset it */
-.od-mk > i, .od-key2-item > i[class^='fx-'] { background-position-x: calc(var(--i, 0) * var(--hw, 0px) * -1); }
+.od-key2-item > i[class^='fx-'] { background-position-x: 0; }
+.od-mk > i { background-position-x: calc(var(--fl, 0) * var(--spill) - var(--i, 0) * var(--hw)); }
 /* both: the cloud drifts over the sun, which still shows through at the top */
-.od-mk > .fx-sun + i { -webkit-mask: linear-gradient(transparent 0, #000 45%); mask: linear-gradient(transparent 0, #000 45%); }
-.od-tl-scroll.compact .od-mk > .fx-sun + i { -webkit-mask: none; mask: none; clip-path: inset(0 0 0 50%); }
+.od-mk > .fx-sun + i {
+  -webkit-mask-image: var(--hm), linear-gradient(transparent 0, #000 45%); mask-image: var(--hm), linear-gradient(transparent 0, #000 45%);
+  -webkit-mask-composite: source-in; mask-composite: intersect;
+}
+.od-tl-scroll.compact .od-mk > .fx-sun + i { -webkit-mask-image: var(--hm); mask-image: var(--hm); clip-path: inset(0 0 0 50%); }
 .od-tl-cell.sun:not(.air):not(.dust) > span:not(.od-mk) { color: #5a3000; text-shadow: 0 1px 0 #fff8; }
 .od-mk-ic { position: absolute; z-index: 1; top: 2px; left: 0; right: 0; display: flex; justify-content: center; gap: 1px; }
 .od-mk-ic svg { width: 13px; height: 13px; filter: drop-shadow(0 1px 1px #000c) !important; }

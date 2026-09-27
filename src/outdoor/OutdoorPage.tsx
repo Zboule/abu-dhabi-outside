@@ -1119,29 +1119,33 @@ function Tiles(props: {
             <button type="button" className="od-tl-cap" {...pop(() => <DayDetail d={windowed.get(d.day) ?? d} />)}>
               {dateOnly ? dayLabel(d.day).split(' ').slice(1).join(' ') : rowDay(d.day)}
             </button>
-            {shown.map((i, k) => {
-              const h = d.hours.find((x) => x.hour === i);
-              if (!h) return <span key={i} className="od-tl-cell empty" />;
+            {tileRow(d, shown).map((c, k, row) => {
+              const { h } = c;
+              if (!h) return <span key={c.i} className="od-tl-cell empty" />;
+              const i = c.i;
               const when = h.time === nowKey ? ' now' : h.day === today && h.time < nowKey ? ' past' : '';
-              const base = h.feels == null ? ([60, 60, 67] as RGB) : heatRGB(h.feels);
-              const col = base;
-              const sun = !h.night && h.uvLevel === 'bad';
-              const dusty = h.dustLevel === 'bad' && RANK_OF[h.dustLevel] >= RANK_OF[h.chemLevel];
-              const air = h.air === 'bad' ? (dusty ? ' dust' : ' air') : '';
+              const { sun, air } = c;
+              // hours are not strict boxes: the heat is a gradient through the neighbours' colours,
+              // and an effect feathers across the edge where the next hour differs
+              const prev = row[k - 1]?.h ? row[k - 1] : c;
+              const next = row[k + 1]?.h ? row[k + 1] : c;
+              const bg = `linear-gradient(to right, ${rgb(mixRGB(prev.col, c.col))}, ${rgb(c.col)} 50%, ${rgb(mixRGB(c.col, next.col))})`;
+              const edge = (same: (o: TileCell) => boolean) =>
+                ({ '--fl': same(prev) ? 0 : 1, '--fr': same(next) ? 0 : 1 }) as React.CSSProperties;
               return (
                 <button
                   type="button"
                   key={i}
                   className={`od-tl-cell${when}${sun ? ' sun' : ''}${air}`}
-                  style={{ background: rgb(col), '--i': k } as React.CSSProperties}
+                  style={{ background: bg, '--i': k } as React.CSSProperties}
                   aria-label={`${hh(h.hour)}, feels ${fmt(h.feels, 0, '°')}${sun ? ', strong sun' : ''}${air ? `, ${air.trim() === 'dust' ? 'dust' : 'polluted air'}` : ''}`}
                   {...pop(() => <HourCard h={h} />)}
                 >
                   {showNum && <span>{h.hour}</span>}
                   {(sun || air) && (
                     <span className="od-mk" aria-hidden="true">
-                      {sun && <i className="fx-sun" />}
-                      {air && <i className={air === ' dust' ? 'fx-dust' : 'fx-air'} />}
+                      {sun && <i className="fx-sun" style={edge((o) => o.sun)} />}
+                      {air && <i className={air === ' dust' ? 'fx-dust' : 'fx-air'} style={edge((o) => o.air === air)} />}
                       {showIcons && (
                         <span className="od-mk-ic">
                           {sun && <Glyph k="sun" color="#fff" />}
@@ -1160,6 +1164,24 @@ function Tiles(props: {
   );
 }
 const RANK_OF: Record<Level, number> = { good: 0, na: 0, ok: 1, bad: 2 };
+
+type TileCell = { i: number; h?: DaySummary['hours'][number]; col: RGB; sun: boolean; air: '' | ' air' | ' dust' };
+/** One day's shown hours with what the tiles draw: heat colour, strong sun, and the air effect. */
+function tileRow(d: DaySummary, shown: number[]): TileCell[] {
+  return shown.map((i) => {
+    const h = d.hours.find((x) => x.hour === i);
+    if (!h) return { i, col: [60, 60, 67] as RGB, sun: false, air: '' as const };
+    const dusty = h.dustLevel === 'bad' && RANK_OF[h.dustLevel] >= RANK_OF[h.chemLevel];
+    return {
+      i,
+      h,
+      col: h.feels == null ? ([60, 60, 67] as RGB) : heatRGB(h.feels),
+      sun: !h.night && h.uvLevel === 'bad',
+      air: h.air === 'bad' ? (dusty ? ' dust' : ' air') : '',
+    };
+  });
+}
+const mixRGB = (a: RGB, b: RGB): RGB => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
 
 /** An hour, the way the clock explains it: verdict and reason, then heat / sun / air rows. */
 const LV_COLOR: Record<Level, string> = { good: '#30d158', ok: '#ffb340', bad: '#ff453a', na: 'rgba(235,235,245,.45)' };
