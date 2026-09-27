@@ -669,14 +669,13 @@ body[data-layout=left] .app header { margin-bottom: 0; }
   position: sticky; left: -12px; z-index: 7; flex: none; width: var(--mon); margin-left: -12px; padding-left: 12px; box-sizing: content-box;
   background: var(--bg); display: flex; align-items: center; justify-content: center; overflow: hidden;
 }
-.od-tl-monv > span { writing-mode: vertical-rl; transform: rotate(180deg); font: 700 12px/1 -apple-system, system-ui; letter-spacing: .04em; color: var(--text); white-space: nowrap; }
+.od-tl-monv > span { writing-mode: vertical-rl; transform: rotate(180deg); font: 700 11px/1 -apple-system, system-ui; letter-spacing: .04em; color: var(--text); white-space: nowrap; }
 /* the date column sits right after the month strip */
-.od-tl-scroll.compact .od-tl-cap { left: var(--mon); margin-left: 0; padding-left: 0; }
+.od-tl-scroll.compact .od-tl-cap { left: var(--mon); margin-left: 0; padding-left: 0; padding-right: 4px; }
 .od-tl-scroll.compact .od-tl-axis .od-tl-cap { left: auto; }
 .od-tl-cap.dated { justify-content: flex-end; font-variant-numeric: tabular-nums; }
 .od-tl-dn { text-align: right; }
 .od-tl-cap.today .od-tl-dn { color: var(--text); font-weight: 800; }
-.od-tl-cap.today .od-tl-dn::before { content: ''; display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: var(--text); margin-right: 2px; vertical-align: middle; }
 
 .od-hc { display: flex; flex-direction: column; min-width: 250px; }
 .od-hc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 15px; font-weight: 700; }

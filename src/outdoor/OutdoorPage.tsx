@@ -1002,19 +1002,20 @@ function Tiles(props: {
   const [zoom, setZoomState] = useState(readZoom);
   const [fitW, setFitW] = useState(0);
   // long ranges: a thin vertical month strip (MON) + a narrow date column, to leave the width to the hours
-  const MON = compact ? 16 : 0;
-  const CAP = compact ? 22 : 50;
+  const MON = compact ? 12 : 0;
+  const CAP = compact ? 16 : 50;
+  const CAP_PAD = compact ? 4 : 8; // the caption's own right padding
 
   // the hour width that fits all 24 in the screen; zoom multiplies it
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    const measure = () => setFitW(Math.max(6, (el.clientWidth - 24 - 8 - CAP - MON) / (dayTo - dayFrom + 1))); // the side padding (24) and the day name's own (8)
+    const measure = () => setFitW(Math.max(6, (el.clientWidth - 24 - CAP_PAD - CAP - MON) / (dayTo - dayFrom + 1))); // the side padding (24)
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [CAP, MON, dayFrom, dayTo]);
+  }, [CAP, CAP_PAD, MON, dayFrom, dayTo]);
   const hw = fitW * zoom;
 
   // zoom around a point (x within the scroller), keeping the hour under it in place
