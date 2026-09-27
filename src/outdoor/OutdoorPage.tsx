@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Info, PopProvider, usePop } from './Pop';
 import { CLOCK_HTML, mountClock, type ClockHour } from './clock';
-import { heatGradient, heatRGB, nightRGB, rgb, type RGB } from '../lib/heat';
+import { heatGradient, heatRGB, rgb, type RGB } from '../lib/heat';
 import {
   CartesianGrid,
   Line,
@@ -952,13 +952,13 @@ function TilesKey() {
         </span>
       </span>
       <span className="od-key2-item">
-        <i className="k-sun" /> strong sun
+        <i className="mk-sun" /> sun too strong
       </span>
       <span className="od-key2-item">
-        <i className="k-air" /> polluted air
+        <i className="mk-air" /> polluted air
       </span>
       <span className="od-key2-item">
-        <i className="k-dust" /> dust
+        <i className="mk-dust" /> dust
       </span>
     </div>
   );
@@ -1006,12 +1006,12 @@ function Tiles(props: {
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
-    const measure = () => setFitW(Math.max(6, (el.clientWidth - CAP) / 24));
+    const measure = () => setFitW(Math.max(6, (el.clientWidth - 24 - 8 - CAP) / (dayTo - dayFrom + 1))) // the side padding (24) and the day name's own (8);
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [CAP]);
+  }, [CAP, dayFrom, dayTo]);
   const hw = fitW * zoom;
 
   // zoom around a point (x within the scroller), keeping the hour under it in place
@@ -1082,8 +1082,10 @@ function Tiles(props: {
   }, [fitW]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const showNum = !compact && hw >= 20;
+  const showIcons = !compact && hw >= 34;
   const every = hw >= 44 ? 1 : hw >= 26 ? 3 : 6; // axis labels
-  const outside = (hr: number) => hr < dayFrom || hr > dayTo;
+  // only the hours of the day (settings): the night is left out, not just darkened
+  const shown = Array.from({ length: dayTo - dayFrom + 1 }, (_, k) => dayFrom + k);
 
   return (
     <div className="od-tl">
@@ -1105,9 +1107,9 @@ function Tiles(props: {
       >
         <div className="od-tl-axis">
           <span className="od-tl-cap" />
-          {Array.from({ length: 24 }, (_, i) => (
+          {shown.map((i) => (
             <span key={i} className="od-tl-tick">
-              {i % every === 0 ? (i === 0 ? '0' : i === 12 ? 'Noon' : hh(i).slice(0, 2).replace(/^0/, '')) : ''}
+              {i % every === 0 || i === dayFrom ? (i === 0 ? '0' : i === 12 ? 'Noon' : hh(i).slice(0, 2).replace(/^0/, '')) : ''}
             </span>
           ))}
         </div>
@@ -1116,12 +1118,12 @@ function Tiles(props: {
             <button type="button" className="od-tl-cap" {...pop(() => <DayDetail d={windowed.get(d.day) ?? d} />)}>
               {dateOnly ? dayLabel(d.day).split(' ').slice(1).join(' ') : rowDay(d.day)}
             </button>
-            {Array.from({ length: 24 }, (_, i) => {
+            {shown.map((i) => {
               const h = d.hours.find((x) => x.hour === i);
               if (!h) return <span key={i} className="od-tl-cell empty" />;
               const when = h.time === nowKey ? ' now' : h.day === today && h.time < nowKey ? ' past' : '';
               const base = h.feels == null ? ([60, 60, 67] as RGB) : heatRGB(h.feels);
-              const col = outside(i) ? nightRGB(base) : base;
+              const col = base;
               const sun = !h.night && h.uvLevel === 'bad';
               const dusty = h.dustLevel === 'bad' && RANK_OF[h.dustLevel] >= RANK_OF[h.chemLevel];
               const air = h.air === 'bad' ? (dusty ? ' dust' : ' air') : '';
@@ -1129,12 +1131,24 @@ function Tiles(props: {
                 <button
                   type="button"
                   key={i}
-                  className={`od-tl-cell${when}${sun ? ' sun' : ''}${air}${outside(i) ? ' off' : ''}`}
+                  className={`od-tl-cell${when}${sun ? ' sun' : ''}${air}`}
                   style={{ background: rgb(col) }}
                   aria-label={`${hh(h.hour)}, feels ${fmt(h.feels, 0, '°')}${sun ? ', strong sun' : ''}${air ? `, ${air.trim() === 'dust' ? 'dust' : 'polluted air'}` : ''}`}
                   {...pop(() => <HourCard h={h} />)}
                 >
                   {showNum && <span>{h.hour}</span>}
+                  {(sun || air) && (
+                    <span className="od-mk" aria-hidden="true">
+                      {showIcons && (
+                        <span className="od-mk-ic">
+                          {sun && <Glyph k="sun" color="#ffd23f" />}
+                          {air && <Glyph k="air" color={air === ' dust' ? '#e0b070' : '#b07cff'} />}
+                        </span>
+                      )}
+                      {sun && <i className="mk-sun" />}
+                      {air && <i className={air === ' dust' ? 'mk-dust' : 'mk-air'} />}
+                    </span>
+                  )}
                 </button>
               );
             })}

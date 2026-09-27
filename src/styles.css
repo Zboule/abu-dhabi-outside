@@ -588,10 +588,10 @@ body[data-layout=left] .app header { margin-bottom: 0; }
 .od-key2-ends { display: flex; justify-content: space-between; font-size: 10px; line-height: 1.2; }
 .od-key2-item { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .od-key2-item > i { width: 16px; height: 12px; border-radius: 3px; background: #b5323c; position: relative; overflow: hidden; }
-.od-key2-item > i.k-sun { box-shadow: inset 0 3px 0 #ffd27a, inset 0 7px 7px -3px rgba(255, 120, 20, .9); }
-.od-key2-item > i.k-air::after, .od-key2-item > i.k-dust::after { content: ''; position: absolute; inset: 0; }
-.od-key2-item > i.k-air::after { background: radial-gradient(circle at 50% 65%, rgba(185, 130, 255, .95), rgba(150, 90, 255, .35) 70%, transparent); }
-.od-key2-item > i.k-dust::after { background: radial-gradient(circle at 50% 65%, rgba(225, 180, 110, .95), rgba(200, 150, 80, .35) 70%, transparent); }
+.od-key2-item > i[class^='mk-'] { height: 5px; width: 18px; border-radius: 1px; }
+.od-key2-item > i.mk-sun { background: #ffd23f; }
+.od-key2-item > i.mk-air { background: #b07cff; }
+.od-key2-item > i.mk-dust { background: #e0b070; }
 
 .od-zoom { display: inline-flex; flex: none; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
 .od-zoom button {
@@ -623,17 +623,21 @@ body[data-layout=left] .app header { margin-bottom: 0; }
 .od-tl-cell > span { position: relative; z-index: 2; font: 700 11px/1 -apple-system, system-ui; color: #fff; text-shadow: 0 1px 2px #0008; }
 .od-tl-cell.past { filter: saturate(.5) brightness(.55); }
 .od-tl-cell.now { outline: 2px solid #fff; outline-offset: -2px; z-index: 3; }
-/* strong sun: a flame glow licking down from the top edge */
-.od-tl-cell.sun { box-shadow: inset 0 3px 0 #ffd27a, inset 0 12px 12px -4px rgba(255, 120, 20, .85); }
-/* polluted air: a violet haze; dust: a sandy one */
-.od-tl-cell.air::after, .od-tl-cell.dust::after { content: ''; position: absolute; inset: 0; z-index: 1; }
-.od-tl-cell.air::after { background: radial-gradient(circle at 50% 70%, rgba(185, 130, 255, .8), rgba(150, 90, 255, .35) 65%, rgba(150, 90, 255, .12)); }
-.od-tl-cell.dust::after { background: radial-gradient(circle at 50% 70%, rgba(225, 180, 110, .8), rgba(200, 150, 80, .35) 65%, rgba(200, 150, 80, .12)); }
+/* sun too strong / bad air: a solid bar per problem along the bottom of the hour
+   (stacked when both), plus the clock's row symbols when the hour is wide enough */
+.od-tl-cell > .od-mk { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; justify-content: flex-end; pointer-events: none; text-shadow: none; }
+.od-mk > i { display: block; height: 5px; flex: none; }
+.od-tl-scroll.compact .od-mk > i { height: 3px; }
+.od-tl-scroll.year .od-mk > i { height: 2px; }
+.mk-sun { background: #ffd23f; }
+.mk-air { background: #b07cff; }
+.mk-dust { background: #e0b070; }
+.od-mk-ic { position: absolute; top: 2px; left: 0; right: 0; display: flex; justify-content: center; gap: 1px; }
+.od-mk-ic svg { width: 13px; height: 13px; filter: drop-shadow(0 1px 1px #000c) !important; }
 .od-tl-scroll.compact .od-tl-cell { height: 12px; }
 .od-tl-scroll.compact .od-tl-cap { font-size: 11px; }
 .od-tl-scroll.year .od-tl-cell { height: 9px; }
 .od-tl-scroll.year .od-tl-cap { font-size: 9px; }
-.od-tl-scroll.compact .od-tl-cell.sun { box-shadow: inset 0 2px 0 #ffd27a; }
 
 .od-hc { display: flex; flex-direction: column; min-width: 250px; }
 .od-hc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 15px; font-weight: 700; }
