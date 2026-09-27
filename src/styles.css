@@ -63,7 +63,7 @@ body {
 }
 
 @media (max-width: 640px) {
-  .app { padding: 16px 12px 38vh; }
+  .app { padding: 16px 12px calc(24px + env(safe-area-inset-bottom)); }
   .app header { margin-bottom: 14px; }
   .app header h1 { font-size: 19px; }
 
