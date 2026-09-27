@@ -550,7 +550,6 @@ body.od-night .od-pop {
 .od-clock .row .ic { width: 26px; height: 26px; flex: none; display: grid; place-items: center; }
 .od-clock .row .t { flex: 1; font-size: 16px; font-weight: 600; letter-spacing: -.3px; }
 .od-clock .row .v { font-size: 15px; font-weight: 500; color: var(--ink2); font-variant-numeric: tabular-nums; }
-.od-clock .chip { width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 10px currentColor; background: currentColor; }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .od-clock .eyebrow, .od-clock h1, .od-clock .sub { animation: rise .7s cubic-bezier(.2, .8, .2, 1) both; }
 .od-clock h1 { animation-delay: .05s; }

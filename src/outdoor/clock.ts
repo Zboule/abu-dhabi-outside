@@ -417,8 +417,6 @@ export function mountClock(
   cv.addEventListener("pointercancel", endScrub);
 
   // ---------- why: one plain row per reason ----------
-  const FLAME = '<svg viewBox="0 0 24 24" width="20" height="20"><defs><linearGradient id="odc-fl" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#ffe08a"/><stop offset=".5" stop-color="#ff8a1f"/><stop offset="1" stop-color="#ff3b1f"/></linearGradient></defs><path fill="url(#odc-fl)" d="M12 2.5c.6 3-1.9 4.6-3.3 6.8C7.4 11.3 6.5 13 6.5 15a5.5 5.5 0 0 0 11 0c0-2.6-1.4-4.3-2.4-5.6-.2 1.3-.8 2.2-1.7 2.7.4-3.3-.4-7-1.4-9.6Z"/></svg>';
-  const CLOUD = c => `<svg viewBox="0 0 24 24" width="22" height="22"><g fill="${c}" opacity=".9"><circle cx="8" cy="14" r="4.5" opacity=".7"/><circle cx="13" cy="11" r="5.5" opacity=".85"/><circle cx="17" cy="15" r="4" opacity=".7"/></g></svg>`;
   function span([a, b], from) { return a <= Math.max(from, WAKE) ? `until ${fmt(b)}` : range(a, b); }
 
   // ---------- the selected hour, explained ----------
@@ -439,23 +437,33 @@ export function mountClock(
     return out.slice(0, 2).map((w, k) => (k ? w.toLowerCase() : w)).join(", ");
   }
   /** The three factors of one hour, with the same cues as the clock. */
+  // SF Symbols-like line glyphs for the rows (24 grid), tinted by the level of that factor
+  const ROW_GLYPH = {
+    heat: '<path d="M10 13.5V5a2 2 0 1 1 4 0v8.5a4 4 0 1 1-4 0Z"/><path d="M12 9v6.5"/><circle cx="12" cy="17" r="1.6" fill="currentColor" stroke="none"/>',
+    sun: '<circle cx="12" cy="12" r="3.8"/><path d="M12 2.8v2.1M12 19.1v2.1M2.8 12h2.1M19.1 12h2.1M5.5 5.5l1.5 1.5M17 17l1.5 1.5M5.5 18.5 7 17M17 7l1.5-1.5"/>',
+    moon: '<path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5Z"/>',
+    air: '<path d="M3 8.5h10.5a2.5 2.5 0 1 0-2.5-2.5"/><path d="M3 12.5h15a2.8 2.8 0 1 1-2.8 2.8"/><path d="M3 16.5h7"/>',
+  };
+  const glyph = (k, color) =>
+    `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="${color}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 0 5px ${color}55)">${ROW_GLYPH[k]}</svg>`;
+  const QUIET = "rgba(235,235,245,.45)";
   function hourRows(h) {
     const dusty = RANK[h.dustLevel] >= RANK[h.pollutionLevel] && RANK[h.dustLevel] > 0;
     return [
       {
-        ic: `<i class="chip" style="color:${rgb(heatRGB(h.feels))}"></i>`,
+        ic: glyph("heat", LVC[h.heat] || QUIET),
         t: h.heat === "bad" ? "Too hot" : h.heat === "ok" ? "Warm" : "Comfortable",
         v: `feels ${h.feels}°`, c: LVC[h.heat],
       },
       h.night
-        ? { ic: FLAME.replace('width="20" height="20"', 'width="15" height="15" opacity=".35"'), t: "Sun is down", v: "", c: "" }
+        ? { ic: glyph("moon", QUIET), t: "Sun is down", v: "", c: "" }
         : {
-            ic: h.uvLevel === "good" ? FLAME.replace('width="20" height="20"', 'width="15" height="15" opacity=".5"') : FLAME,
+            ic: glyph("sun", LVC[h.uvLevel] || QUIET),
             t: h.uvLevel === "bad" ? "Strong sun" : h.uvLevel === "ok" ? "Sunny, hats on" : "Gentle sun",
             v: `UV ${Math.round(h.uv)}`, c: LVC[h.uvLevel],
           },
       {
-        ic: CLOUD(h.air === "good" ? "rgba(235,235,245,.35)" : dusty ? "#d7aa69" : "#b98cff"),
+        ic: glyph("air", LVC[h.air] || QUIET),
         t: airWordOf(h),
         v: dusty ? `dust ${h.dust ?? "n/a"}` : `AQI ${h.pollution ?? "n/a"}`, c: LVC[h.air],
       },
