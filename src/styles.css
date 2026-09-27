@@ -588,10 +588,7 @@ body[data-layout=left] .app header { margin-bottom: 0; }
 .od-key2-ends { display: flex; justify-content: space-between; font-size: 10px; line-height: 1.2; }
 .od-key2-item { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .od-key2-item > i { width: 16px; height: 12px; border-radius: 3px; background: #b5323c; position: relative; overflow: hidden; }
-.od-key2-item > i[class^='mk-'] { height: 5px; width: 18px; border-radius: 1px; }
-.od-key2-item > i.mk-sun { background: #ffd23f; }
-.od-key2-item > i.mk-air { background: #b07cff; }
-.od-key2-item > i.mk-dust { background: #e0b070; }
+.od-key2-item > i[class^='fx-'] { width: 26px; height: 16px; }
 
 .od-zoom { display: inline-flex; flex: none; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
 .od-zoom button {
@@ -625,14 +622,40 @@ body[data-layout=left] .app header { margin-bottom: 0; }
 .od-tl-cell.now { outline: 2px solid #fff; outline-offset: -2px; z-index: 3; }
 /* sun too strong / bad air: a solid bar per problem along the bottom of the hour
    (stacked when both), plus the clock's row symbols when the hour is wide enough */
-.od-tl-cell > .od-mk { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; justify-content: flex-end; pointer-events: none; text-shadow: none; }
-.od-mk > i { display: block; height: 5px; flex: none; }
-.od-tl-scroll.compact .od-mk > i { height: 3px; }
-.od-tl-scroll.year .od-mk > i { height: 2px; }
-.mk-sun { background: #ffd23f; }
-.mk-air { background: #b07cff; }
-.mk-dust { background: #e0b070; }
-.od-mk-ic { position: absolute; top: 2px; left: 0; right: 0; display: flex; justify-content: center; gap: 1px; }
+.od-tl-cell > .od-mk { position: absolute; inset: 0; z-index: 1; pointer-events: none; text-shadow: none; }
+.od-mk > i { position: absolute; inset: 0; }
+/* The effects take over the heat colour on purpose: an hour you should not be out in reads
+   as blinding sun, a toxic cloud or a sand storm. Clouds and storm streaks are one texture
+   shifted by the hour's index (--i), so a run of bad hours reads as one continuous cloud. */
+.fx-sun, .od-key2-item > i.fx-sun {
+  background:
+    repeating-linear-gradient(105deg, rgba(255, 255, 235, .5) 0 3px, transparent 3px 14px),
+    linear-gradient(#fffdf0 0, #fff07a 22%, #ffc21a 60%, #ff9100 100%);
+}
+.fx-air, .od-key2-item > i.fx-air {
+  background:
+    radial-gradient(circle at 12px 30%, rgba(215, 170, 255, .95) 0 9px, transparent 16px),
+    radial-gradient(circle at 44px 70%, rgba(190, 130, 255, .95) 0 12px, transparent 20px),
+    radial-gradient(circle at 78px 25%, rgba(225, 185, 255, .9) 0 10px, transparent 17px),
+    radial-gradient(circle at 104px 80%, rgba(170, 105, 250, .95) 0 11px, transparent 19px),
+    linear-gradient(rgba(125, 55, 215, .9), rgba(95, 35, 180, .95));
+  background-size: 120px 100%; background-repeat: repeat-x;
+}
+.fx-dust, .od-key2-item > i.fx-dust {
+  background:
+    repeating-linear-gradient(-22deg, rgba(255, 238, 200, .55) 0 2px, transparent 2px 7px),
+    radial-gradient(circle at 20px 40%, rgba(240, 205, 150, .9) 0 10px, transparent 18px),
+    radial-gradient(circle at 70px 75%, rgba(185, 130, 70, .9) 0 12px, transparent 20px),
+    linear-gradient(rgba(215, 160, 90, .93), rgba(170, 115, 55, .95));
+  background-size: auto, 100px 100%, 100px 100%, auto; background-repeat: repeat, repeat-x, repeat-x, no-repeat;
+}
+/* after the shorthands above, which would reset it */
+.od-mk > i, .od-key2-item > i[class^='fx-'] { background-position-x: calc(var(--i, 0) * var(--hw, 0px) * -1); }
+/* both: the cloud drifts over the sun, which still shows through at the top */
+.od-mk > .fx-sun + i { -webkit-mask: linear-gradient(transparent 0, #000 45%); mask: linear-gradient(transparent 0, #000 45%); }
+.od-tl-scroll.compact .od-mk > .fx-sun + i { -webkit-mask: none; mask: none; clip-path: inset(0 0 0 50%); }
+.od-tl-cell.sun:not(.air):not(.dust) > span:not(.od-mk) { color: #5a3000; text-shadow: 0 1px 0 #fff8; }
+.od-mk-ic { position: absolute; z-index: 1; top: 2px; left: 0; right: 0; display: flex; justify-content: center; gap: 1px; }
 .od-mk-ic svg { width: 13px; height: 13px; filter: drop-shadow(0 1px 1px #000c) !important; }
 .od-tl-scroll.compact .od-tl-cell { height: 12px; }
 .od-tl-scroll.compact .od-tl-cap { font-size: 11px; }

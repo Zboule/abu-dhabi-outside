@@ -952,13 +952,13 @@ function TilesKey() {
         </span>
       </span>
       <span className="od-key2-item">
-        <i className="mk-sun" /> sun too strong
+        <i className="fx-sun" /> sun too strong
       </span>
       <span className="od-key2-item">
-        <i className="mk-air" /> polluted air
+        <i className="fx-air" /> polluted air
       </span>
       <span className="od-key2-item">
-        <i className="mk-dust" /> dust
+        <i className="fx-dust" /> dust
       </span>
     </div>
   );
@@ -1118,7 +1118,7 @@ function Tiles(props: {
             <button type="button" className="od-tl-cap" {...pop(() => <DayDetail d={windowed.get(d.day) ?? d} />)}>
               {dateOnly ? dayLabel(d.day).split(' ').slice(1).join(' ') : rowDay(d.day)}
             </button>
-            {shown.map((i) => {
+            {shown.map((i, k) => {
               const h = d.hours.find((x) => x.hour === i);
               if (!h) return <span key={i} className="od-tl-cell empty" />;
               const when = h.time === nowKey ? ' now' : h.day === today && h.time < nowKey ? ' past' : '';
@@ -1132,21 +1132,21 @@ function Tiles(props: {
                   type="button"
                   key={i}
                   className={`od-tl-cell${when}${sun ? ' sun' : ''}${air}`}
-                  style={{ background: rgb(col) }}
+                  style={{ background: rgb(col), '--i': k } as React.CSSProperties}
                   aria-label={`${hh(h.hour)}, feels ${fmt(h.feels, 0, '°')}${sun ? ', strong sun' : ''}${air ? `, ${air.trim() === 'dust' ? 'dust' : 'polluted air'}` : ''}`}
                   {...pop(() => <HourCard h={h} />)}
                 >
                   {showNum && <span>{h.hour}</span>}
                   {(sun || air) && (
                     <span className="od-mk" aria-hidden="true">
+                      {sun && <i className="fx-sun" />}
+                      {air && <i className={air === ' dust' ? 'fx-dust' : 'fx-air'} />}
                       {showIcons && (
                         <span className="od-mk-ic">
-                          {sun && <Glyph k="sun" color="#ffd23f" />}
-                          {air && <Glyph k="air" color={air === ' dust' ? '#e0b070' : '#b07cff'} />}
+                          {sun && <Glyph k="sun" color="#fff" />}
+                          {air && <Glyph k="air" color="#fff" />}
                         </span>
                       )}
-                      {sun && <i className="mk-sun" />}
-                      {air && <i className={air === ' dust' ? 'mk-dust' : 'mk-air'} />}
                     </span>
                   )}
                 </button>
