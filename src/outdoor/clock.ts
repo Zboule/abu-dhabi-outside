@@ -8,6 +8,8 @@
 // and plain "why" rows follow.
 // Drag around the clock to scrub an hour; tap the middle to come back to now.
 
+import { heatRGB, rgb } from '../lib/heat';
+
 export interface ClockHour {
   hour: number;
   feels: number;
@@ -135,20 +137,7 @@ export function mountClock(
     return { a: "Stay in", b: dayWord, col: COLOR.bad, mood: COLOR.bad, sub };
   }
 
-  // ---------- spectrum: feels-like to colour ----------
-  const STOPS = [
-    [18, [48, 209, 150]], [26, [48, 209, 88]], [31, [140, 222, 60]], [33, [255, 200, 40]],
-    [35, [255, 140, 20]], [37.5, [255, 69, 58]], [42, [226, 28, 52]], [47, [150, 8, 40]],
-  ];
-  function heatRGB(f) {
-    if (f <= STOPS[0][0]) return STOPS[0][1];
-    for (let i = 1; i < STOPS.length; i++) {
-      const [x1, c1] = STOPS[i], [x0, c0] = STOPS[i - 1];
-      if (f <= x1) { const t = (f - x0) / (x1 - x0); return c0.map((v, k) => v + (c1[k] - v) * t); }
-    }
-    return STOPS[STOPS.length - 1][1];
-  }
-  const rgb = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+  // ---------- spectrum: feels-like to colour (shared with the tiles, lib/heat.ts) ----------
 
   // per-hour signals, then smooth interpolation between hour centres
   const sig = {

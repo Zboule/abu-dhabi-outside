@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Info, PopProvider, usePop } from './Pop';
 import { CLOCK_HTML, mountClock, type ClockHour } from './clock';
+import { heatGradient, heatRGB, nightRGB, rgb, type RGB } from '../lib/heat';
 import {
   CartesianGrid,
   Line,
@@ -204,10 +205,9 @@ export function OutdoorPage() {
   // Today goes dark (the clock's flames and gas only glow on black). Tied to the period, not
   // to the clock, so the page doesn't flash back to light while another day loads.
   useEffect(() => {
-    if (preset !== 'today') return;
     document.body.classList.add('od-night');
     return () => document.body.classList.remove('od-night');
-  }, [preset]);
+  }, []);
 
   useEffect(() => {
     let live = true;
@@ -238,7 +238,13 @@ export function OutdoorPage() {
     return all.filter((h) => h.day >= raw.start && h.day <= raw.end);
   }, [raw, th]);
   const pending = !!raw && (raw.start !== start || raw.end !== end);
-  const days = useMemo(() => (hours ? summarizeDays(hours, day.from, day.to) : []), [hours, day]);
+  // rows always carry the whole day (hours outside the day setting are darkened, not dropped);
+  // a day's summary (its popup) only talks about the day setting
+  const days = useMemo(() => (hours ? summarizeDays(hours, 0, 23) : []), [hours]);
+  const windowed = useMemo(
+    () => new Map((hours ? summarizeDays(hours, day.from, day.to) : []).map((d) => [d.day, d])),
+    [hours, day],
+  );
   const span = daysBetween(start, end) + 1;
   const points = useMemo(() => (hours ? chartPoints(hours) : []), [hours]);
   const nowKey = dubaiNowHour();
@@ -461,9 +467,11 @@ export function OutdoorPage() {
               </div>
             ) : (
               <>
-                <TilesKey th={th} />
                 <Tiles
                   days={days}
+                  windowed={windowed}
+                  dayFrom={day.from}
+                  dayTo={day.to}
                   th={th}
                   compact={span > COMPACT_AFTER}
                   nowKey={nowKey}
@@ -931,117 +939,274 @@ function readDayHours(): DayHours {
   return { from: DAY_FROM, to: DAY_TO };
 }
 
-/**
- * Feels-like colour, anchored to the comfort limits (not to the range on screen):
- * blue cold, green comfortable up to feelsGood, orange hot but manageable up to feelsOk,
- * red too hot, darkening as it climbs.
- */
-function feelsStops(th: Thresholds): [number, string][] {
-  const g = th.feelsGood;
-  const o = th.feelsOk;
-  return [
-    [g - 14, '#3f7fd0'], // cold
-    [g - 10, '#2fae6e'], // comfortable
-    [g, '#4fb04a'],
-    [g + 0.5, '#f5a623'], // hot, manageable
-    [o, '#ec7a1c'],
-    [o + 0.5, '#d8402b'], // too hot
-    [o + 8, '#7d1526'],
-  ];
-}
-function feelsColor(t: number | null, th: Thresholds): string {
-  if (t == null) return 'var(--od-na)';
-  const S = feelsStops(th);
-  if (t <= S[0][0]) return S[0][1];
-  for (let i = 1; i < S.length; i++) {
-    if (t <= S[i][0]) {
-      const k = (t - S[i - 1][0]) / (S[i][0] - S[i - 1][0]);
-      return `color-mix(in srgb, ${S[i][1]} ${Math.round(k * 100)}%, ${S[i - 1][1]})`;
-    }
-  }
-  return S[S.length - 1][1];
-}
-
-/** What the colours and the hatching mean, above the tiles. */
-function TilesKey({ th }: { th: Thresholds }) {
-  const seg = (label: string, t: number) => (
-    <span className="od-key-seg">
-      <i style={{ background: feelsColor(t, th) }} />
-      {label}
-    </span>
-  );
+/** What the tiles show, like the clock: colour for heat, flames for strong sun, gas for bad air. */
+function TilesKey() {
   return (
-    <div className="od-key">
-      {seg('cold', th.feelsGood - 16)}
-      {seg(`comfortable ≤ ${th.feelsGood}°`, th.feelsGood - 4)}
-      {seg(`hot ≤ ${th.feelsOk}°`, th.feelsOk - 1)}
-      {seg('too hot', th.feelsOk + 4)}
-      <span className="od-key-seg od-key-danger">
-        <i /> UV or air: avoid
+    <div className="od-key2">
+      <span className="od-key2-heat">
+        <span>feels</span>
+        <i style={{ background: heatGradient(18, 47) }} />
+        <span className="od-key2-ends">
+          <span>18°</span>
+          <span>47°</span>
+        </span>
+      </span>
+      <span className="od-key2-item">
+        <i className="k-sun" /> strong sun
+      </span>
+      <span className="od-key2-item">
+        <i className="k-air" /> polluted air
+      </span>
+      <span className="od-key2-item">
+        <i className="k-dust" /> dust
       </span>
     </div>
   );
 }
 
+const ZOOM_KEY = 'od-zoom';
+const ZOOM_MAX = 5;
+function readZoom(): number {
+  try {
+    const z = Number(localStorage.getItem(ZOOM_KEY));
+    return z >= 1 && z <= ZOOM_MAX ? z : 1;
+  } catch {
+    return 1;
+  }
+}
+
 /**
- * The page: one row of hour tiles per day, edge to edge. Colour is the feels-like
- * temperature; hatching (with ☀️ / 🫁) marks an hour where UV or air is in the avoid zone.
- * The hour is written inside; tap a tile for all three ratings.
+ * Several days: one row per day, the 24 hours always on that one row, coloured like the
+ * clock (feels-like spectrum; hours outside the day darkened; a flame glow for strong sun,
+ * a violet haze for polluted air, sand for dust). Zoom (buttons, pinch, ctrl + wheel)
+ * widens the hours; the rows then scroll sideways together, day labels pinned on the left.
+ * Tap an hour for all three ratings, a day name for the day.
  */
 function Tiles(props: {
   days: DaySummary[];
+  /** the same days, restricted to the day setting: what a day's summary talks about */
+  windowed: Map<string, DaySummary>;
   th: Thresholds;
   compact: boolean;
   nowKey: string;
+  dayFrom: number;
+  dayTo: number;
   /** "1 Jan" rows, for the year average where weekdays mean nothing */
   dateOnly?: boolean;
 }) {
-  const { days, th, compact, nowKey, dateOnly } = props;
+  const { days, windowed, th, compact, nowKey, dayFrom, dayTo, dateOnly } = props;
   const today = dubaiToday();
   const pop = usePop();
+  const scroller = useRef<HTMLDivElement>(null);
+  const [zoom, setZoomState] = useState(readZoom);
+  const [fitW, setFitW] = useState(0);
+  const CAP = compact ? 64 : 62;
+
+  // the hour width that fits all 24 in the screen; zoom multiplies it
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const measure = () => setFitW(Math.max(6, (el.clientWidth - CAP) / 24));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [CAP]);
+  const hw = fitW * zoom;
+
+  // zoom around a point (x within the scroller), keeping the hour under it in place
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const setZoom = (z: number, x?: number) => {
+    const el = scroller.current;
+    const nz = Math.min(ZOOM_MAX, Math.max(1, z));
+    if (el && fitW) {
+      const px = (x ?? el.clientWidth / 2) - CAP;
+      const at = (el.scrollLeft + px) / (fitW * zoomRef.current);
+      requestAnimationFrame(() => (el.scrollLeft = at * fitW * nz - px));
+    }
+    setZoomState(nz);
+    try {
+      localStorage.setItem(ZOOM_KEY, String(nz));
+    } catch {
+      /* private mode */
+    }
+  };
+
+  // pinch (two fingers) and ctrl + wheel (trackpad pinch on a laptop)
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const pts = new Map<number, { x: number; y: number }>();
+    let start: { d: number; z: number } | null = null;
+    const dist = () => {
+      const [a, b] = [...pts.values()];
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    };
+    const down = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 2) start = { d: dist(), z: zoomRef.current };
+    };
+    const move = (e: PointerEvent) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 2 && start) {
+        const [a, b] = [...pts.values()];
+        const r = el.getBoundingClientRect();
+        setZoom((start.z * dist()) / start.d, (a.x + b.x) / 2 - r.left);
+      }
+    };
+    const up = (e: PointerEvent) => {
+      pts.delete(e.pointerId);
+      if (pts.size < 2) start = null;
+    };
+    const wheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      setZoom(zoomRef.current * Math.exp(-e.deltaY / 200), e.clientX - r.left);
+    };
+    el.addEventListener('pointerdown', down);
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+    el.addEventListener('wheel', wheel, { passive: false });
+    return () => {
+      el.removeEventListener('pointerdown', down);
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+      el.removeEventListener('pointercancel', up);
+      el.removeEventListener('wheel', wheel);
+    };
+  }, [fitW]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const showNum = !compact && hw >= 20;
+  const every = hw >= 44 ? 1 : hw >= 26 ? 3 : 6; // axis labels
+  const outside = (hr: number) => hr < dayFrom || hr > dayTo;
+
   return (
-    <div className={`od-grid${compact ? ' compact' : ''}${dateOnly ? ' year' : ''}`}>
-      {days.map((d) => (
-        <div className="od-row" key={d.day}>
-          <div className="od-cap">
-            <button type="button" {...pop(() => <DayDetail d={d} />)}>
+    <div className="od-tl">
+      <div className="od-tl-bar">
+        <TilesKey />
+        <div className="od-zoom" role="group" aria-label="Zoom">
+          <button type="button" aria-label="Zoom out" disabled={zoom <= 1} onClick={() => setZoom(zoom / 1.6)}>
+            −
+          </button>
+          <button type="button" aria-label="Zoom in" disabled={zoom >= ZOOM_MAX} onClick={() => setZoom(zoom * 1.6)}>
+            +
+          </button>
+        </div>
+      </div>
+      <div
+        className={`od-tl-scroll${compact ? ' compact' : ''}${dateOnly ? ' year' : ''}`}
+        ref={scroller}
+        style={{ '--hw': `${hw}px`, '--cap': `${CAP}px` } as React.CSSProperties}
+      >
+        <div className="od-tl-axis">
+          <span className="od-tl-cap" />
+          {Array.from({ length: 24 }, (_, i) => (
+            <span key={i} className="od-tl-tick">
+              {i % every === 0 ? (i === 0 ? '0' : i === 12 ? 'Noon' : hh(i).slice(0, 2).replace(/^0/, '')) : ''}
+            </span>
+          ))}
+        </div>
+        {days.map((d) => (
+          <div className="od-tl-row" key={d.day}>
+            <button type="button" className="od-tl-cap" {...pop(() => <DayDetail d={windowed.get(d.day) ?? d} />)}>
               {dateOnly ? dayLabel(d.day).split(' ').slice(1).join(' ') : rowDay(d.day)}
             </button>
-          </div>
-          <div
-            className="od-tiles"
-            style={{ '--n': d.hours.length, '--half': Math.ceil(d.hours.length / 2) } as React.CSSProperties}
-          >
-            {d.hours.map((h) => {
+            {Array.from({ length: 24 }, (_, i) => {
+              const h = d.hours.find((x) => x.hour === i);
+              if (!h) return <span key={i} className="od-tl-cell empty" />;
               const when = h.time === nowKey ? ' now' : h.day === today && h.time < nowKey ? ' past' : '';
-              const uvBad = !h.night && h.uvLevel === 'bad';
-              const airBad = h.air === 'bad';
-              // heat is already the colour (red); hatching is only for UV and air
-              const danger = uvBad || airBad;
-              const flags = [uvBad && 'UV', airBad && 'air'].filter(Boolean).join(', ');
+              const base = h.feels == null ? ([60, 60, 67] as RGB) : heatRGB(h.feels);
+              const col = outside(i) ? nightRGB(base) : base;
+              const sun = !h.night && h.uvLevel === 'bad';
+              const dusty = h.dustLevel === 'bad' && RANK_OF[h.dustLevel] >= RANK_OF[h.chemLevel];
+              const air = h.air === 'bad' ? (dusty ? ' dust' : ' air') : '';
               return (
                 <button
                   type="button"
-                  key={h.hour}
-                  className={`od-tile${when}${danger ? ' danger' : ''}`}
-                  style={{ '--lv': feelsColor(h.feels, th) } as React.CSSProperties}
-                  aria-label={`${hh(h.hour)}, feels ${fmt(h.feels, 0, '°')}${flags ? `, avoid: ${flags}` : ''}`}
-                  {...pop(() => <HourDetail h={h} th={th} />)}
+                  key={i}
+                  className={`od-tl-cell${when}${sun ? ' sun' : ''}${air}${outside(i) ? ' off' : ''}`}
+                  style={{ background: rgb(col) }}
+                  aria-label={`${hh(h.hour)}, feels ${fmt(h.feels, 0, '°')}${sun ? ', strong sun' : ''}${air ? `, ${air.trim() === 'dust' ? 'dust' : 'polluted air'}` : ''}`}
+                  {...pop(() => <HourCard h={h} />)}
                 >
-                  <i />
-                  {!compact && <span>{h.hour}</span>}
-                  {!compact && danger && (
-                    <em className="od-flags" aria-hidden="true">
-                      {uvBad && '☀️'}
-                      {airBad && '🫁'}
-                    </em>
-                  )}
+                  {showNum && <span>{h.hour}</span>}
                 </button>
               );
             })}
           </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+const RANK_OF: Record<Level, number> = { good: 0, na: 0, ok: 1, bad: 2 };
+
+/** An hour, the way the clock explains it: verdict and reason, then heat / sun / air rows. */
+const LV_COLOR: Record<Level, string> = { good: '#30d158', ok: '#ffb340', bad: '#ff453a', na: 'rgba(235,235,245,.45)' };
+const GLYPH_PATHS = {
+  heat: '<path d="M10 13.5V5a2 2 0 1 1 4 0v8.5a4 4 0 1 1-4 0Z"/><path d="M12 9v6.5"/><circle cx="12" cy="17" r="1.6" fill="currentColor" stroke="none"/>',
+  sun: '<circle cx="12" cy="12" r="3.8"/><path d="M12 2.8v2.1M12 19.1v2.1M2.8 12h2.1M19.1 12h2.1M5.5 5.5l1.5 1.5M17 17l1.5 1.5M5.5 18.5 7 17M17 7l1.5-1.5"/>',
+  moon: '<path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5Z"/>',
+  air: '<path d="M3 8.5h10.5a2.5 2.5 0 1 0-2.5-2.5"/><path d="M3 12.5h15a2.8 2.8 0 1 1-2.8 2.8"/><path d="M3 16.5h7"/>',
+};
+function Glyph({ k, color }: { k: keyof typeof GLYPH_PATHS; color: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="22"
+      height="22"
+      fill="none"
+      stroke={color}
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ color, filter: `drop-shadow(0 0 5px ${color}55)` }}
+      dangerouslySetInnerHTML={{ __html: GLYPH_PATHS[k] }}
+    />
+  );
+}
+function HourCard({ h }: { h: Hour }) {
+  const dusty = RANK_OF[h.dustLevel] >= RANK_OF[h.chemLevel] && RANK_OF[h.dustLevel] > 0;
+  const airWord =
+    h.air === 'good' ? 'Clean air' : dusty ? (h.air === 'bad' ? 'Dusty air' : 'Some dust') : h.air === 'bad' ? 'Smoggy air' : 'Hazy air';
+  const rows = [
+    { k: 'heat' as const, lv: h.heat, t: h.heat === 'bad' ? 'Too hot' : h.heat === 'ok' ? 'Warm' : 'Comfortable', v: `feels ${fmt(h.feels, 0, '°')}` },
+    h.night
+      ? { k: 'moon' as const, lv: 'na' as Level, t: 'Sun is down', v: '' }
+      : { k: 'sun' as const, lv: h.uvLevel, t: h.uvLevel === 'bad' ? 'Strong sun' : h.uvLevel === 'ok' ? 'Sunny, hats on' : 'Gentle sun', v: `UV ${fmt(h.uv, 0)}` },
+    { k: 'air' as const, lv: h.air, t: airWord, v: h.adai == null ? 'no data' : dusty ? `dust ${h.dustIdx}` : `AQI ${h.chem}` },
+  ];
+  // like the clock's centre: what holds the hour back, at its worst level ("Too hot, strong sun")
+  const worst = rows.filter((r) => r.lv === h.verdict && r.lv !== 'na').map((r) => r.t);
+  const why =
+    h.verdict === 'good' || !worst.length
+      ? `Feels ${fmt(h.feels, 0, '°')}`
+      : worst.map((w, i) => (i ? w.toLowerCase() : w)).join(', ');
+  return (
+    <div className="od-hc">
+      <div className="od-hc-head">
+        <span>
+          {relDay(h.day)}, {hh(h.hour)}
+        </span>
+        <b style={{ color: LV_COLOR[h.verdict] }}>{LEVEL_LABEL[h.verdict]}</b>
+      </div>
+      <div className="od-hc-why">{why}</div>
+      {rows.map((r) => (
+        <div className="od-hc-row" key={r.k}>
+          <Glyph k={r.k} color={LV_COLOR[r.lv]} />
+          <span>{r.t}</span>
+          <b style={{ color: r.lv === 'na' ? undefined : LV_COLOR[r.lv] }}>{r.v}</b>
         </div>
       ))}
+      <div className="od-hc-src">
+        {fmt(h.temp, 0, '°')} air · {fmt(h.humidity, 0, '%')} humidity ·{' '}
+        {h.airSrc === 'station' ? 'air measured at 5 EAD stations' : h.airSrc === 'typical' ? '3-year average' : 'forecast'}
+      </div>
     </div>
   );
 }
