@@ -4,7 +4,8 @@
 // The Today view: when to go out first, then a 24h clock drawn on canvas. The ring is the
 // feels-like temperature as a continuous spectrum (green, orange, red), flames lick out of
 // hours with strong sun, a drifting violet gas marks polluted air (sandy haze for dust), a
-// bright arc marks the good window (07:00 to 21:00 only), and plain "why" rows follow.
+// bright arc marks the good window (inside the day set in the settings; the rest is darkened),
+// and plain "why" rows follow.
 // Drag around the clock to scrub an hour; tap the middle to come back to now.
 
 export interface ClockHour {
@@ -40,11 +41,23 @@ export const CLOCK_HTML = `
 /** Draw the clock into `root` (which must contain CLOCK_HTML); returns a cleanup. */
 export function mountClock(
   root: HTMLElement,
-  DATA: { date: string; nowHour: number; hours: ClockHour[]; live?: boolean; dayWord?: string; intro?: boolean },
+  DATA: {
+    date: string;
+    nowHour: number;
+    hours: ClockHour[];
+    live?: boolean;
+    dayWord?: string;
+    intro?: boolean;
+    /** the day's first and last hour (inclusive), from the settings */
+    dayFrom?: number;
+    dayTo?: number;
+  },
 ): () => void {
 
   const hours = DATA.hours;
-  const WAKE = 7, SLEEP = 21; // only ever recommend 07:00 to 21:00
+  // the day, from the settings (day start / day end): hours outside it are darkened and never
+  // recommended. Default is the full day (nothing darkened).
+  const WAKE = DATA.dayFrom ?? 0, SLEEP = (DATA.dayTo ?? 23) + 1;
   // live = today: plan from now and show the now dot. Another day: plan its whole waking
   // day, and open on noon.
   const live = DATA.live !== false;

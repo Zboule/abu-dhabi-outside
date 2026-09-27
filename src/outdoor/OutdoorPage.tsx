@@ -453,6 +453,8 @@ export function OutdoorPage() {
                     raw!.dayOff === 0 ? 'today' : raw!.dayOff === 1 ? 'tomorrow' : raw!.dayOff === -1 ? 'yesterday' : `on ${dayLabel(raw!.start).split(' ')[0]}`
                   }
                   date={raw!.start}
+                  dayFrom={day.from}
+                  dayTo={day.to}
                   intro={firstClock.current}
                   onMounted={() => (firstClock.current = false)}
                 />
@@ -1051,11 +1053,13 @@ function TodayClock(props: {
   live: boolean;
   dayWord: string;
   date: string;
+  dayFrom: number;
+  dayTo: number;
   /** play the ring's sweep-in (first load only; day changes slide instead) */
   intro: boolean;
   onMounted: () => void;
 }) {
-  const { hours, nowKey, live, dayWord, date, intro, onMounted } = props;
+  const { hours, nowKey, live, dayWord, date, dayFrom, dayTo, intro, onMounted } = props;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const root = ref.current;
@@ -1081,10 +1085,10 @@ function TodayClock(props: {
     });
     // re-render from scratch; the cleanup stops the animation loop and its listeners
     root.innerHTML = CLOCK_HTML;
-    const stop = mountClock(root, { date, nowHour: Number(nowKey.slice(11, 13)), hours: clock, live, dayWord, intro });
+    const stop = mountClock(root, { date, nowHour: Number(nowKey.slice(11, 13)), hours: clock, live, dayWord, intro, dayFrom, dayTo });
     onMounted();
     return stop;
-  }, [hours, nowKey, live, dayWord, date]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hours, nowKey, live, dayWord, date, dayFrom, dayTo]); // eslint-disable-line react-hooks/exhaustive-deps
   return <div className="od-clock" ref={ref} />;
 }
 

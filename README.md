@@ -24,8 +24,9 @@ longer ranges (3 days, 16 days, a week, the next months, a year average) are hou
 - **Air, two parts:** pollution (non-dust fine particles, ozone, NO2, SO2, CO on US EPA scales) is rated
   strictly; dust is rated on its own and only turns "avoid" when it's thick. An hour is the worst of
   heat, sun and air.
-- **Kids limits** (on by default, in settings) are stricter on all three. Nothing is recommended outside
-  07:00 to 21:00.
+- **Kids limits** (on by default, in settings) are stricter on all three.
+- **Day start / end** (settings, default the full day): hours outside it are darkened on the clock and
+  never recommended.
 
 Not medical advice: a guide for planning a day out.
 
