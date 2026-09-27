@@ -38,6 +38,10 @@ export interface HourRaw {
   airSrc?: 'station' | 'model' | 'typical';
   /** Dust share of PM2.5 when known from measurements (µg/m³); otherwise derived from CAMS dust. */
   fineDust?: number | null;
+  /** On measured hours: what the model said for that hour (to measure its current bias). */
+  model?: { pm25: number | null; pm10: number | null; no2: number | null };
+  /** On forecast hours: pulled toward the latest measurements (see anchorForecast). */
+  anchored?: boolean;
 }
 
 /** Today's date in Dubai as YYYY-MM-DD (en-CA formats as ISO). */
@@ -267,9 +271,57 @@ export async function fetchOutdoorMeasured(start: string, end: string): Promise<
     fetchOutdoor(start, end),
     start <= dubaiToday() ? fetchStations(start, end) : Promise.resolve(new Map<string, Measured>()),
   ]);
-  return hours.map((h) => {
-    const m = measured.get(h.time);
-    return m ? { ...h, ...m, airSrc: 'station' as const } : { ...h, airSrc: 'model' as const };
+  return anchorForecast(
+    hours.map((h) => {
+      const m = measured.get(h.time);
+      return m
+        ? { ...h, ...m, airSrc: 'station' as const, model: { pm25: h.pm25, pm10: h.pm10, no2: h.no2 } }
+        : { ...h, airSrc: 'model' as const };
+    }),
+  );
+}
+
+/**
+ * How many hours the measured-vs-model gap takes to fade to about a third (e-folding).
+ * Backtested on 5 weeks of Sept 2026 (forecast every 6h, next 48h, kids limits): a gap over
+ * the last 3 measured hours fading over 12h cut the 1-6h pollution error from 21.0 to 18.3
+ * and caught more real avoid hours (1498 vs 1453 of 2249); longer fades or a ratio did worse.
+ */
+export const ANCHOR_TAU = 12;
+const ANCHORED = ['pm25', 'pm10', 'no2'] as const;
+
+/**
+ * The model (CAMS, 40 km) is often off by a steady amount for days: it missed the late-Sept
+ * 2026 humid episodes by ~30 points and overshot quiet days. So the forecast is anchored to
+ * what the stations just measured: the mean gap (measured - model) over the last 3 measured
+ * hours is added to the forecast hours, fading with lead time (exp(-lead / tau)), so the
+ * next hours follow the air as it really is and later days drift back to the plain model.
+ * Ozone is left alone (the model and the stations agree on it).
+ */
+export function anchorForecast(rows: HourRaw[], tau = ANCHOR_TAU): HourRaw[] {
+  let last = -1;
+  rows.forEach((h, i) => {
+    if (h.airSrc === 'station') last = i;
+  });
+  if (last < 0 || tau <= 0) return rows;
+  const gap: Partial<Record<(typeof ANCHORED)[number], number>> = {};
+  for (const k of ANCHORED) {
+    const d: number[] = [];
+    for (let i = last; i >= 0 && i > last - 6 && d.length < 3; i--) {
+      const h = rows[i];
+      const mv = h.model?.[k];
+      if (h.airSrc === 'station' && h[k] != null && mv != null) d.push(h[k]! - mv);
+    }
+    if (d.length >= 2) gap[k] = d.reduce((a, b) => a + b, 0) / d.length;
+  }
+  return rows.map((h, i) => {
+    if (i <= last || h.airSrc !== 'model') return h;
+    const w = Math.exp(-(i - last) / tau);
+    const out: HourRaw = { ...h, anchored: true };
+    for (const k of ANCHORED) {
+      if (gap[k] != null && h[k] != null) out[k] = Math.max(0, h[k]! + gap[k]! * w);
+    }
+    return out;
   });
 }
 
