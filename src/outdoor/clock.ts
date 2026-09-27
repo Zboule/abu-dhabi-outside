@@ -142,7 +142,8 @@ export function mountClock(
     feels: hours.map(h => h.feels),
     night: hours.map((h, i) => (i < WAKE || i >= SLEEP ? 1 : 0)),
     uv: hours.map(h => (h.night ? 0 : h.uvLevel === "bad" ? 0.6 + 0.4 * Math.min(1, (h.uv - 6) / 4) : h.uvLevel === "ok" ? 0.34 : 0)),
-    air: hours.map(h => (h.air === "bad" ? 1 : h.air === "ok" ? 0.4 : 0)),
+    // gas only where the air is over the limit ("avoid"); the OK warning zone stays clear
+    air: hours.map(h => (h.air === "bad" ? 1 : 0)),
     dust: hours.map(h => (h.air !== "good" && RANK[h.dustLevel] >= RANK[h.pollutionLevel] && h.dustLevel !== "good" ? 1 : 0)),
   };
   const smooth = t => t * t * (3 - 2 * t);
