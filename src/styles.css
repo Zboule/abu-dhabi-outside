@@ -658,6 +658,13 @@ body[data-layout=left] .app header { margin-bottom: 0; }
 .od-tl-scroll.compact .od-tl-cap { font-size: 11px; }
 .od-tl-scroll.year .od-tl-cell { height: 9px; }
 .od-tl-scroll.year .od-tl-cap { font-size: 9px; }
+/* long ranges: month on its first row, then only the date, right-aligned */
+.od-tl-cap.dated { justify-content: space-between; gap: 4px; font-variant-numeric: tabular-nums; }
+.od-tl-mon { color: var(--text); font-weight: 700; }
+.od-tl-dn { min-width: 2ch; text-align: right; }
+.od-tl-cap.today .od-tl-dn { color: var(--text); font-weight: 800; }
+.od-tl-cap.today .od-tl-dn::before { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--text); margin-right: 3px; vertical-align: middle; }
+.od-tl-scroll.compact .od-tl-row.mstart { margin-top: 6px; }
 
 .od-hc { display: flex; flex-direction: column; min-width: 250px; }
 .od-hc-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 15px; font-weight: 700; }

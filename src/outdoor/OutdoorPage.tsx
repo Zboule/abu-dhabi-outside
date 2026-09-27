@@ -1114,10 +1114,33 @@ function Tiles(props: {
             </span>
           ))}
         </div>
-        {days.map((d) => (
-          <div className="od-tl-row" key={d.day}>
-            <button type="button" className="od-tl-cap" {...pop(() => <DayDetail d={windowed.get(d.day) ?? d} />)}>
-              {dateOnly ? dayLabel(d.day).split(' ').slice(1).join(' ') : rowDay(d.day)}
+        {days.map((d, n) => {
+          // long ranges: the weekday means little there, the month does. Its name is shown once,
+          // on its first row, with a gap above it; the rows below only carry the date.
+          const newMonth = n === 0 || d.day.slice(0, 7) !== days[n - 1].day.slice(0, 7);
+          return (
+          <div className={`od-tl-row${compact && newMonth && n > 0 ? ' mstart' : ''}`} key={d.day}>
+            <button
+              type="button"
+              className={`od-tl-cap${compact ? ' dated' : ''}${d.day === today ? ' today' : ''}`}
+              {...pop(() => <DayDetail d={windowed.get(d.day) ?? d} />)}
+            >
+              {compact ? (
+                <>
+                  <span className="od-tl-mon">{newMonth ? MONTH[Number(d.day.slice(5, 7)) - 1] : ''}</span>
+                  <span className="od-tl-dn">
+                    {(() => {
+                      // the year's 9px rows: every date would be a wall of numbers, so a few landmarks
+                      const dn = Number(d.day.slice(8, 10));
+                      return !dateOnly || d.day === today || dn === 1 || dn % 5 === 0 ? dn : '';
+                    })()}
+                  </span>
+                </>
+              ) : dateOnly ? (
+                dayLabel(d.day).split(' ').slice(1).join(' ')
+              ) : (
+                rowDay(d.day)
+              )}
             </button>
             <TileStrip row={tileRow(d, shown)} hw={hw} past={(c) => c.h!.day === today && c.h!.time < nowKey}>
               {(c) => {
@@ -1143,7 +1166,8 @@ function Tiles(props: {
               }}
             </TileStrip>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
