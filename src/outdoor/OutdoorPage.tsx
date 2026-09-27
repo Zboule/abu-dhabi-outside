@@ -147,10 +147,9 @@ function relDay(day: string): string {
   if (day === addDays(today, -1)) return 'Yesterday';
   return dayLabel(day);
 }
-/** Row label for the squares: short enough for a phone ("Wed 30"). */
+/** Row label for the squares: short enough for a phone, "Today" then "Mon 28". */
 function rowDay(day: string): string {
-  const r = relDay(day);
-  return r === dayLabel(day) ? r.split(' ').slice(0, 2).join(' ') : r;
+  return day === dubaiToday() ? 'Today' : dayLabel(day).split(' ').slice(0, 2).join(' ');
 }
 
 const LEVEL_LABEL: Record<Level, string> = { good: 'Good', ok: 'OK', bad: 'Avoid', na: 'n/a' };
@@ -951,14 +950,16 @@ function TilesKey() {
           <span>47°</span>
         </span>
       </span>
-      <span className="od-key2-item">
-        <i className="fx-sun" /> sun too strong
-      </span>
-      <span className="od-key2-item">
-        <i className="fx-air" /> polluted air
-      </span>
-      <span className="od-key2-item">
-        <i className="fx-dust" /> dust
+      <span className="od-key2-fx">
+        <span className="od-key2-item">
+          <i className="fx-sun" /> strong sun
+        </span>
+        <span className="od-key2-item">
+          <i className="fx-air" /> polluted air
+        </span>
+        <span className="od-key2-item">
+          <i className="fx-dust" /> dust
+        </span>
       </span>
     </div>
   );
@@ -1000,7 +1001,7 @@ function Tiles(props: {
   const scroller = useRef<HTMLDivElement>(null);
   const [zoom, setZoomState] = useState(readZoom);
   const [fitW, setFitW] = useState(0);
-  const CAP = compact ? 64 : 62;
+  const CAP = compact ? 50 : 50;
 
   // the hour width that fits all 24 in the screen; zoom multiplies it
   useEffect(() => {
