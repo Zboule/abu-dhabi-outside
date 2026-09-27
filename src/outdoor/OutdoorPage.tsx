@@ -1119,44 +1119,29 @@ function Tiles(props: {
             <button type="button" className="od-tl-cap" {...pop(() => <DayDetail d={windowed.get(d.day) ?? d} />)}>
               {dateOnly ? dayLabel(d.day).split(' ').slice(1).join(' ') : rowDay(d.day)}
             </button>
-            {tileRow(d, shown).map((c, k, row) => {
-              const { h } = c;
-              if (!h) return <span key={c.i} className="od-tl-cell empty" />;
-              const i = c.i;
-              const when = h.time === nowKey ? ' now' : h.day === today && h.time < nowKey ? ' past' : '';
-              const { sun, air } = c;
-              // hours are not strict boxes: the heat is a gradient through the neighbours' colours,
-              // and an effect feathers across the edge where the next hour differs
-              const prev = row[k - 1]?.h ? row[k - 1] : c;
-              const next = row[k + 1]?.h ? row[k + 1] : c;
-              const bg = `linear-gradient(to right, ${rgb(mixRGB(prev.col, c.col))}, ${rgb(c.col)} 50%, ${rgb(mixRGB(c.col, next.col))})`;
-              const edge = (same: (o: TileCell) => boolean) =>
-                ({ '--fl': same(prev) ? 0 : 1, '--fr': same(next) ? 0 : 1 }) as React.CSSProperties;
-              return (
-                <button
-                  type="button"
-                  key={i}
-                  className={`od-tl-cell${when}${sun ? ' sun' : ''}${air}`}
-                  style={{ background: bg, '--i': k } as React.CSSProperties}
-                  aria-label={`${hh(h.hour)}, feels ${fmt(h.feels, 0, '°')}${sun ? ', strong sun' : ''}${air ? `, ${air.trim() === 'dust' ? 'dust' : 'polluted air'}` : ''}`}
-                  {...pop(() => <HourCard h={h} />)}
-                >
-                  {showNum && <span>{h.hour}</span>}
-                  {(sun || air) && (
-                    <span className="od-mk" aria-hidden="true">
-                      {sun && <i className="fx-sun" style={edge((o) => o.sun)} />}
-                      {air && <i className={air === ' dust' ? 'fx-dust' : 'fx-air'} style={edge((o) => o.air === air)} />}
-                      {showIcons && (
-                        <span className="od-mk-ic">
-                          {sun && <Glyph k="sun" color="#fff" />}
-                          {air && <Glyph k="air" color="#fff" />}
-                        </span>
-                      )}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+            <TileStrip row={tileRow(d, shown)} hw={hw} past={(c) => c.h!.day === today && c.h!.time < nowKey}>
+              {(c) => {
+                const h = c.h!;
+                const { sun, air } = c;
+                return (
+                  <button
+                    type="button"
+                    key={c.i}
+                    className={`od-tl-cell${h.time === nowKey ? ' now' : ''}${sun ? ' sun' : ''}${air}`}
+                    aria-label={`${hh(h.hour)}, feels ${fmt(h.feels, 0, '°')}${sun ? ', strong sun' : ''}${air ? `, ${air.trim() === 'dust' ? 'dust' : 'polluted air'}` : ''}`}
+                    {...pop(() => <HourCard h={h} />)}
+                  >
+                    {showNum && <span>{h.hour}</span>}
+                    {showIcons && (sun || air) && (
+                      <span className="od-mk-ic" aria-hidden="true">
+                        {sun && <Glyph k="sun" color="#fff" />}
+                        {air && <Glyph k="air" color="#fff" />}
+                      </span>
+                    )}
+                  </button>
+                );
+              }}
+            </TileStrip>
           </div>
         ))}
       </div>
@@ -1181,7 +1166,47 @@ function tileRow(d: DaySummary, shown: number[]): TileCell[] {
     };
   });
 }
-const mixRGB = (a: RGB, b: RGB): RGB => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+const EMPTY_RGB: RGB = [40, 40, 44];
+
+/**
+ * One day's hours painted as a whole, not as boxes: the heat is one gradient through every
+ * hour's colour, each run of strong sun / bad air is one shape with soft ends that melt into
+ * the neighbours, and the past is dimmed by one veil. The hour buttons sit on top, transparent.
+ */
+function TileStrip({ row, hw, past, children }: { row: TileCell[]; hw: number; past: (c: TileCell) => boolean; children: (c: TileCell) => React.ReactNode }) {
+  const n = row.length;
+  const heat = `linear-gradient(to right, ${row.map((c, k) => `${rgb(c.h ? c.col : EMPTY_RGB)} ${(((k + 0.5) / n) * 100).toFixed(2)}%`).join(', ')})`;
+  const spill = hw * 0.35;
+  const runs: { kind: string; from: number; to: number }[] = [];
+  for (const kindOf of [(c: TileCell) => (c.sun ? 'sun' : ''), (c: TileCell) => c.air.trim()]) {
+    row.forEach((c, k) => {
+      const kind = c.h ? kindOf(c) : '';
+      const last = runs[runs.length - 1];
+      if (kind && last && last.kind === kind && last.to === k - 1) last.to = k;
+      else if (kind) runs.push({ kind, from: k, to: k });
+    });
+  }
+  const pastN = row.filter((c) => c.h && past(c)).length;
+  return (
+    <div className="od-tl-strip" style={{ background: heat }}>
+      {runs.map((r) => {
+        const fl = r.from > 0 ? spill : 0;
+        const fr = r.to < n - 1 ? spill : 0;
+        const left = r.from * hw - fl;
+        const mask = `linear-gradient(to right, ${fl ? 'transparent' : '#000'}, #000 ${2 * fl}px, #000 calc(100% - ${2 * fr}px), ${fr ? 'transparent' : '#000'})`;
+        return (
+          <i
+            key={`${r.kind}${r.from}`}
+            className={`od-tl-run fx-${r.kind}`}
+            style={{ left, width: (r.to - r.from + 1) * hw + fl + fr, backgroundPositionX: -left, WebkitMaskImage: mask, maskImage: mask }}
+          />
+        );
+      })}
+      {pastN > 0 && <i className="od-tl-past" style={{ width: pastN * hw }} />}
+      {row.map((c) => (c.h ? children(c) : <span key={c.i} className="od-tl-cell empty" />))}
+    </div>
+  );
+}
 
 /** An hour, the way the clock explains it: verdict and reason, then heat / sun / air rows. */
 const LV_COLOR: Record<Level, string> = { good: '#30d158', ok: '#ffb340', bad: '#ff453a', na: 'rgba(235,235,245,.45)' };
