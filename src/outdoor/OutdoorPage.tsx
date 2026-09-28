@@ -1263,6 +1263,8 @@ function TileStrip({ row, hw, past, children }: { row: TileCell[]; hw: number; p
 }
 
 /** An hour, the way the clock explains it: verdict and reason, then heat / sun / air rows. */
+/** bad air takes the colour of its cloud on the clock and the tiles (violet smog, sand dust) */
+const GAS_COL = { air: '#b98cff', dust: '#e2b872' };
 const LV_COLOR: Record<Level, string> = { good: '#30d158', ok: '#ffb340', bad: '#ff453a', na: 'rgba(235,235,245,.45)' };
 const GLYPH_PATHS = {
   heat: '<path d="M10 13.5V5a2 2 0 1 1 4 0v8.5a4 4 0 1 1-4 0Z"/><path d="M12 9v6.5"/><circle cx="12" cy="17" r="1.6" fill="currentColor" stroke="none"/>',
@@ -1288,6 +1290,7 @@ function Glyph({ k, color }: { k: keyof typeof GLYPH_PATHS; color: string }) {
 }
 function HourCard({ h }: { h: Hour }) {
   const dusty = RANK_OF[h.dustLevel] >= RANK_OF[h.chemLevel] && RANK_OF[h.dustLevel] > 0;
+  const gas = h.air === 'bad' ? (dusty ? GAS_COL.dust : GAS_COL.air) : '';
   const airWord =
     h.air === 'good' ? 'Clean air' : dusty ? (h.air === 'bad' ? 'Dusty air' : 'Some dust') : h.air === 'bad' ? 'Smoggy air' : 'Hazy air';
   const rows = [
@@ -1314,9 +1317,9 @@ function HourCard({ h }: { h: Hour }) {
       <div className="od-hc-why">{why}</div>
       {rows.map((r) => (
         <div className="od-hc-row" key={r.k}>
-          <Glyph k={r.k} color={LV_COLOR[r.lv]} />
+          <Glyph k={r.k} color={r.k === 'air' && gas ? gas : LV_COLOR[r.lv]} />
           <span>{r.t}</span>
-          <b style={{ color: r.lv === 'na' ? undefined : LV_COLOR[r.lv] }}>{r.v}</b>
+          <b style={{ color: r.k === 'air' && gas ? gas : r.lv === 'na' ? undefined : LV_COLOR[r.lv] }}>{r.v}</b>
         </div>
       ))}
       <div className="od-hc-src">
@@ -1371,6 +1374,42 @@ function TodayClock(props: {
     onMounted();
     return stop;
   }, [hours, nowKey, live, dayWord, date, dayFrom, dayTo]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // One phone screen, no scroll: shrink the dial until the page ends at the bottom of the visible
+  // area ("Show charts" included). The visual viewport, not vh units (iOS resolves those against a
+  // stale viewport on deep links).
+  useEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    let raf = 0;
+    const fit = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const dial = root.querySelector<HTMLElement>('.dial');
+        const app = root.closest<HTMLElement>('.app');
+        const more = document.querySelector<HTMLElement>('.od-more');
+        if (!dial || !app || !more) return;
+        const vh = window.visualViewport?.height ?? window.innerHeight;
+        const padB = parseFloat(getComputedStyle(app).paddingBottom) || 0;
+        const bottom = more.getBoundingClientRect().bottom + window.scrollY + padB;
+        const w = dial.getBoundingClientRect().width;
+        const max = Math.min(400, root.clientWidth);
+        const next = Math.round(Math.max(230, Math.min(max, w - (bottom - vh))));
+        if (Math.abs(next - w) >= 1) root.style.setProperty('--dial', `${next}px`);
+      });
+    };
+    fit();
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', fit);
+    window.addEventListener('resize', fit);
+    window.addEventListener('pageshow', fit);
+    return () => {
+      cancelAnimationFrame(raf);
+      vv?.removeEventListener('resize', fit);
+      window.removeEventListener('resize', fit);
+      window.removeEventListener('pageshow', fit);
+    };
+  }, [hours]);
   return <div className="od-clock" ref={ref} />;
 }
 

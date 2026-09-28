@@ -531,24 +531,27 @@ body.od-night .od-pop {
 .od-clock h1 { margin: 2px 0 0; font-size: 32px; line-height: 1.1; font-weight: 800; letter-spacing: -.8px; }
 .od-clock h1 .when { display: inline; }
 .od-clock .sub { margin-top: 4px; font-size: 16px; line-height: 1.3; font-weight: 500; color: var(--ink2); letter-spacing: -.3px; }
-.od-clock .dial { position: relative; margin: 2px auto 0; width: min(100%, 400px); aspect-ratio: 1; }
-.od-clock .dial canvas { position: absolute; inset: -6%; width: 112%; height: 112%; touch-action: none; }
+.od-clock .dial { position: relative; margin: 2px auto 0; width: min(100%, 400px, var(--dial, 400px)); aspect-ratio: 1; container-type: inline-size; }
+.od-clock .dial canvas { position: absolute; inset: -6%; width: 112%; height: 112%; touch-action: none; -webkit-touch-callout: none; }
+/* dragging round the dial must scrub hours, never select (and paint blue) the page */
+.app, .od-clock { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
 .od-clock .centre {
     position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
     pointer-events: none; text-align: center;
   }
-.od-clock .c-when { font-size: 13px; font-weight: 600; color: var(--ink2); letter-spacing: -.1px; }
-.od-clock .c-word { font-size: 36px; line-height: 1.05; font-weight: 800; letter-spacing: -.8px; margin: 2px 0 2px; transition: color .2s; }
-.od-clock .c-feels { font-size: 15px; font-weight: 600; color: var(--ink2); font-variant-numeric: tabular-nums; }
-.od-clock .why { margin-top: 14px; }
+.od-clock .c-when { font-size: clamp(18px, 6.5cqw, 26px); line-height: 1.1; font-weight: 800; color: var(--ink); letter-spacing: -.6px; }
+.od-clock .c-word { font-size: clamp(17px, 6cqw, 24px); line-height: 1.05; font-weight: 800; letter-spacing: -.8px; margin: 2px 0 2px; transition: color .2s; }
+.od-clock .c-feels { font-size: clamp(11px, 3.8cqw, 15px); font-weight: 600; color: var(--ink2); font-variant-numeric: tabular-nums; }
+.od-clock .why { margin-top: 6px; position: relative; }
 .od-clock .why h2 { font-size: 13px; font-weight: 600; color: var(--ink3); text-transform: uppercase; letter-spacing: .4px; margin: 0 0 4px 2px; display: flex; align-items: center; justify-content: flex-end; }
-.od-clock .why h2 { min-height: 24px; }
+/* the way back to now floats over the dial's empty corner instead of taking a row */
+.od-clock .why h2 { position: absolute; right: 0; bottom: 100%; margin: 0 0 4px; }
 .od-clock .why .now-btn[hidden] { display: inline-block; visibility: hidden; }
 .od-clock .why .now-btn {
     appearance: none; border: 0; font: inherit; font-size: 12px; font-weight: 700; letter-spacing: 0; text-transform: none;
     color: #000; background: rgba(255, 255, 255, .9); padding: 3px 10px; border-radius: 999px; cursor: pointer;
   }
-.od-clock .row { display: flex; align-items: center; gap: 12px; padding: 13px 2px; border-top: .5px solid var(--sep); }
+.od-clock .row { display: flex; align-items: center; gap: 12px; padding: 11px 2px; border-top: .5px solid var(--sep); }
 .od-clock .row:first-of-type { border-top: 0; }
 .od-clock .row .ic { width: 26px; height: 26px; flex: none; display: grid; place-items: center; }
 .od-clock .row .t { flex: 1; font-size: 16px; font-weight: 600; letter-spacing: -.3px; }

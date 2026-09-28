@@ -331,8 +331,8 @@ export function mountClock(
     });
     ctx.restore();
 
-    // selected hour (while scrubbing): a bright outline around that hour
-    if (selected !== home) {
+    // the selected hour: a bright outline around it, the now hour included
+    {
       ctx.save();
       ctx.strokeStyle = "rgba(255,255,255,.95)"; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.shadowColor = "#fff"; ctx.shadowBlur = 8;
       ctx.beginPath();
@@ -449,8 +449,11 @@ export function mountClock(
   const glyph = (k, color) =>
     `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="${color}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 0 5px ${color}55)">${ROW_GLYPH[k]}</svg>`;
   const QUIET = "rgba(235,235,245,.45)";
+  // bad air wears the colour of the gas drawn on the ring (violet smog, sand for dust), so the row reads as that cloud
+  const GAS_COL = { air: "#b98cff", dust: "#e2b872" };
   function hourRows(h) {
     const dusty = RANK[h.dustLevel] >= RANK[h.pollutionLevel] && RANK[h.dustLevel] > 0;
+    const gas = h.air === "bad" ? (dusty ? GAS_COL.dust : GAS_COL.air) : "";
     return [
       {
         ic: glyph("heat", LVC[h.heat] || QUIET),
@@ -465,9 +468,9 @@ export function mountClock(
             v: `UV ${Math.round(h.uv)}`, c: LVC[h.uvLevel],
           },
       {
-        ic: glyph("air", LVC[h.air] || QUIET),
+        ic: glyph("air", gas || LVC[h.air] || QUIET),
         t: airWordOf(h),
-        v: dusty ? `dust ${h.dust ?? "n/a"}` : `AQI ${h.pollution ?? "n/a"}`, c: LVC[h.air],
+        v: dusty ? `dust ${h.dust ?? "n/a"}` : `AQI ${h.pollution ?? "n/a"}`, c: gas || LVC[h.air],
       },
     ];
   }
@@ -493,13 +496,15 @@ export function mountClock(
 
   resize();
   showCentre(home);
+  // the dial is sized to fit the screen height (see TodayClock), so follow the canvas, not the window
   const onResize = () => { resize(); if (reduce) frame(performance.now()); };
-  addEventListener("resize", onResize);
+  const ro = new ResizeObserver(onResize);
+  ro.observe(cv);
   if (reduce) frame(performance.now()); else start();
 
   return () => {
     stop();
     document.removeEventListener("visibilitychange", onVis);
-    removeEventListener("resize", onResize);
+    ro.disconnect();
   };
 }
