@@ -80,9 +80,9 @@ export function mountClock(
     if (a === 12 || b === 12) return `${fmt(a)} to ${fmt(b)}`;
     return sa === sb ? `${na} to ${nb} ${sb}` : `${fmt(a)} to ${fmt(b)}`;
   }
-  function runs(from, test) {
+  function runs(from, test, to = SLEEP) {
     const out = [];
-    for (let i = Math.max(from, WAKE); i < SLEEP; i++) {
+    for (let i = Math.max(from, WAKE); i < Math.min(to, SLEEP); i++) {
       if (!test(hours[i])) continue;
       const last = out[out.length - 1];
       if (last && last[1] === i) last[1] = i + 1; else out.push([i, i + 1]);
@@ -201,18 +201,23 @@ export function mountClock(
     sh.addColorStop(0, "rgba(0,0,0,.35)"); sh.addColorStop(.45, "rgba(0,0,0,0)"); sh.addColorStop(.9, "rgba(255,255,255,.06)"); sh.addColorStop(1, "rgba(255,255,255,0)");
     g.beginPath(); g.arc(CX, CX, R_OUT, 0, TAU); g.arc(CX, CX, R_IN, TAU, 0, true); g.fillStyle = sh; g.fill();
 
-    // recommended windows: a clean bright arc just inside the ring
-    const good = runs(now, isGood), okR = runs(now, isOk);
-    const rec = good.length ? good : okR;
-    const col = good.length ? "#6dffa0" : "#ffd27a";
-    g.lineCap = "round"; g.lineWidth = 4;
-    rec.forEach(([a, b]) => {
+    // recommended windows: a clean bright arc just inside the ring; today's earlier windows
+    // stay as a faint thin arc, so a missed morning still shows
+    const windows = (from, to) => {
+      const good = runs(from, isGood, to);
+      return good.length ? { rec: good, col: "#6dffa0" } : { rec: runs(from, isOk, to), col: "#ffd27a" };
+    };
+    const arcs = [{ ...windows(now, SLEEP), width: 4, alpha: 1 }];
+    if (live) arcs.push({ ...windows(WAKE, now), width: 2.5, alpha: 0.4 });
+    g.lineCap = "round";
+    arcs.forEach(({ rec, col, width, alpha }) => rec.forEach(([a, b]) => {
       g.save();
-      g.shadowColor = col; g.shadowBlur = 12;
+      g.globalAlpha = alpha; g.lineWidth = width;
+      g.shadowColor = col; g.shadowBlur = alpha < 1 ? 0 : 12;
       g.strokeStyle = col;
       g.beginPath(); g.arc(CX, CX, R_OUT + 8, ang(a * 15 + 1.5), ang(b * 15 - 1.5)); g.stroke();
       g.restore();
-    });
+    }));
   }
 
   // cheap smooth noise: layered sines, enough for flicker
