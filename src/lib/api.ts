@@ -128,7 +128,9 @@ export async function fetchOutdoor(start: string, end: string): Promise<HourRaw[
     temp: w!.temperature_2m[i] ?? null,
     feels: w!.apparent_temperature[i] ?? null,
     humidity: w!.relative_humidity_2m[i] ?? null,
-    uv: w!.uv_index[i] ?? null,
+    // Open-Meteo's UV at "13:00" is the 12:00-13:00 mean; our row "13:00" is 13:00-14:00, so take the next one
+    // (the range's last hour is at night, UV 0)
+    uv: i + 1 < w!.time.length ? (w!.uv_index[i + 1] ?? null) : w!.is_day[i] === 0 ? 0 : null,
     night: w!.is_day[i] === 0,
     wind: w!.wind_speed_10m[i] ?? null,
     pm10: av('pm10', t),
