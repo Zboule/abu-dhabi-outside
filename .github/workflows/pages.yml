@@ -69,3 +69,8 @@ jobs:
           path: dist
       - id: deployment
         uses: actions/deploy-pages@v4
+
+      # after the deploy, so a stale mirror still ships the site, but the run turns red (and
+      # GitHub emails) when no station reading is newer than 6 hours
+      - name: Station data is fresh
+        run: EAD_DATA=station-data/air python3 scripts/ead_sync.py --check-fresh 6

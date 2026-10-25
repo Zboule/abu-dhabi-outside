@@ -13,6 +13,7 @@ client does the QC and the median, so those rules can change without re-fetching
   ead_sync.py                  catch up from the last stored hour to now (the timer)
   ead_sync.py --since 2023-01-01   re-fetch every window with a hole (backfill)
   ead_sync.py --seed raw.json  import a bulk download {station: [rows]}
+  ead_sync.py --check-fresh 6  exit 1 if the newest stored reading is over 6 hours old (no fetch)
 """
 import argparse, datetime as dt, json, os, re, sys, time, urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -103,12 +104,29 @@ def last_stored_day(store: Store) -> dt.date:
     return t - dt.timedelta(days=3)
 
 
+def check_fresh(store, hours: float) -> int:
+    """0 when some station has a reading within `hours` (EAD's own outages show up here too)."""
+    now = dt.datetime.now(DUBAI).replace(tzinfo=None)
+    newest = None
+    for m in {now.strftime("%Y-%m"), (now - dt.timedelta(days=1)).strftime("%Y-%m")}:
+        for rows in store.month(m)["hours"].values():
+            for k, v in rows.items():
+                if any(x for x in v) and (newest is None or k > newest):
+                    newest = k
+    age = (now - dt.datetime.fromisoformat(newest)).total_seconds() / 3600 if newest else float("inf")
+    print(f"newest reading {newest}, {age:.1f} h old (limit {hours:g} h)")
+    return 0 if age <= hours else 1
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--since", help="re-fetch every 3-day window from this date that has a hole")
     ap.add_argument("--seed", help="import a bulk {station: [rows]} JSON first")
+    ap.add_argument("--check-fresh", type=float, metavar="HOURS", help="only check the newest reading's age")
     a = ap.parse_args()
     store = Store()
+    if a.check_fresh is not None:
+        sys.exit(check_fresh(store, a.check_fresh))
     if a.seed:
         raw = json.load(open(a.seed))
         for s in STATIONS:

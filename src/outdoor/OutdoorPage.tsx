@@ -19,6 +19,7 @@ import {
   daysBetween,
   dubaiNowHour,
   dubaiToday,
+  DUST_FINE_OF_COARSE,
   fetchOutdoorMeasured,
   fetchTypicalYears,
   WEATHER_MAX_AHEAD,
@@ -35,6 +36,7 @@ import {
   dewPoint,
   dewWord,
   factorLevel,
+  NIGHT_HEAT,
   NORMAL,
   pm10At,
   SENSITIVE,
@@ -574,7 +576,9 @@ function HourDetail({ h, compact = false }: { h: Hour; th: Thresholds; compact?:
             ? 'Measured at 5 EAD stations'
             : h.airSrc === 'typical'
               ? '3-year average'
-              : 'Model forecast',
+              : h.time < dubaiNowHour()
+                ? 'Model: no station data for this hour'
+                : 'Model forecast',
     },
   ];
   return (
@@ -657,8 +661,14 @@ function RatingInfo({ th, sensitive, day }: { th: Thresholds; sensitive: boolean
         <tbody>
           <tr>
             <td>🌡️ Comfort (feels like)</td>
-            <td>≤ {th.feelsGood}°</td>
-            <td>≤ {th.feelsOk}°</td>
+            <td>
+              ≤ {th.feelsGood}°<br />
+              <small>{th.feelsGood + NIGHT_HEAT.good}° at night</small>
+            </td>
+            <td>
+              ≤ {th.feelsOk}°<br />
+              <small>{th.feelsOk + NIGHT_HEAT.ok}° at night</small>
+            </td>
             <td>above</td>
           </tr>
           <tr>
@@ -764,8 +774,8 @@ function AirIndexInfo({ th }: { th: Thresholds }) {
         </li>
       </ul>
       <p>
-        The hour takes the worse of the two. Dust share: on measured hours, from the coarse fraction (fine dust ≈ 0.43 ×
-        (PM10 − PM2.5)); on model hours, {DUST_FINE_FRACTION * 100}% of the CAMS dust load.
+        The hour takes the worse of the two. Dust share: from the coarse fraction (fine dust ≈ {DUST_FINE_OF_COARSE} ×
+        (PM10 − PM2.5)); without PM10, {DUST_FINE_FRACTION * 100}% of the CAMS dust load.
       </p>
       <p>
         Bands:{' '}
@@ -1215,7 +1225,7 @@ function tileRow(d: DaySummary, shown: number[], th: Thresholds): TileCell[] {
     return {
       i,
       h,
-      col: h.feels == null ? ([60, 60, 67] as RGB) : heatRGB(h.feels, th),
+      col: h.heatFeels == null ? ([60, 60, 67] as RGB) : heatRGB(h.heatFeels, th),
       sun,
       air: fx.dust >= 0.5 && fx.dust >= fx.air ? ' dust' : fx.air >= 0.5 ? ' air' : '',
       fx,
@@ -1337,7 +1347,13 @@ function HourCard({ h }: { h: Hour }) {
       ))}
       <div className="od-hc-src">
         {fmt(h.temp, 0, '°')} air · {fmt(h.humidity, 0, '%')} humidity ·{' '}
-        {h.airSrc === 'station' ? 'air measured at 5 EAD stations' : h.airSrc === 'typical' ? 'typical year' : 'forecast'}
+        {h.airSrc === 'station'
+          ? 'air measured at 5 EAD stations'
+          : h.airSrc === 'typical'
+            ? 'typical year'
+            : h.time < dubaiNowHour()
+              ? 'air from the model, no station data'
+              : 'forecast'}
       </div>
 
     </div>
@@ -1369,6 +1385,7 @@ function TodayClock(props: {
       return {
         hour: i,
         feels: Math.round(h?.feels ?? 0),
+        heatFeels: h?.heatFeels ?? h?.feels ?? 0,
         heat: h?.heat ?? 'na',
         uv: h?.uv ?? 0,
         uvLevel: h?.uvLevel ?? 'na',

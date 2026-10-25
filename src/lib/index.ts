@@ -125,6 +125,8 @@ export interface Hour extends HourRaw {
   dustIdx: number | null;
   chemLevel: Level;
   dustLevel: Level;
+  /** feels-like moved onto the daytime scale (see heatFeels): what the heat rating and colour use */
+  heatFeels: number | null;
   heat: Level;
   uvLevel: Level;
   air: Level;
@@ -149,6 +151,29 @@ export const NORMAL: Thresholds = { feelsGood: 32, feelsOk: 36, uvGood: 5, uvOk:
 // Kids and asthma: strict on pollution (avoid above the EPA "sensitive groups" line),
 // dust only "avoid" when it's thick (over ~350 µg/m³ of PM10).
 export const SENSITIVE: Thresholds = { feelsGood: 31, feelsOk: 35, uvGood: 4, uvOk: 6, airGood: 75, airOk: 100, dustGood: 100, dustOk: 200 };
+
+/**
+ * Heat limits are higher at night. The feels-like formula weighs humidity heavily, so a humid
+ * night reads about 3° hotter than a day hour of the same heat stress (WBGT, the measure behind
+ * children's outdoor heat policies). Against WBGT 26/29 (AAP kids bands), over a year of Al Bateen
+ * airport observations, these offsets lifted agreement from 81% to 92% (nights 71% to 94%),
+ * fitted on half the months and tested on the other half.
+ */
+export const NIGHT_HEAT = { good: 3, ok: 3.5 };
+
+/**
+ * Feels-like moved onto the daytime scale: at night the night limits land on the day limits
+ * (piecewise linear), so one rating and one colour scale serve day and night alike.
+ */
+export function heatFeels(feels: number | null, night: boolean, th: Thresholds): number | null {
+  if (feels == null || !night) return feels;
+  const { feelsGood: g, feelsOk: o } = th;
+  const gn = g + NIGHT_HEAT.good;
+  const on = o + NIGHT_HEAT.ok;
+  if (feels <= gn) return feels - NIGHT_HEAT.good;
+  if (feels <= on) return g + ((feels - gn) * (o - g)) / (on - gn);
+  return feels - NIGHT_HEAT.ok;
+}
 
 function level(v: number | null, good: number, ok: number): Level {
   if (v == null) return 'na';
@@ -214,7 +239,8 @@ export function enrich(raw: HourRaw[], th: Thresholds): Hour[] {
     const chemLevel = level(chem, th.airGood, th.airOk);
     const dustLevel = level(dustIdx, th.dustGood, th.dustOk);
 
-    const heat = level(h.feels, th.feelsGood, th.feelsOk);
+    const hf = heatFeels(h.feels, h.night, th);
+    const heat = level(hf, th.feelsGood, th.feelsOk);
     const uvLevel = level(h.uv, th.uvGood, th.uvOk);
     // worse of pollution and dust; unknown only when both are
     const air: Level =
@@ -236,6 +262,7 @@ export function enrich(raw: HourRaw[], th: Thresholds): Hour[] {
       dustIdx,
       chemLevel,
       dustLevel,
+      heatFeels: hf,
       heat,
       uvLevel,
       air,

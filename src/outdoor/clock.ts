@@ -13,6 +13,8 @@ import { heatRGB, rgb, type HeatLimits } from '../lib/heat';
 export interface ClockHour {
   hour: number;
   feels: number;
+  /** feels-like on the daytime scale (night limits are higher): what the colour follows */
+  heatFeels?: number;
   heat: string;
   uv: number;
   uvLevel: string;
@@ -147,7 +149,7 @@ export function mountClock(
 
   // per-hour signals, then smooth interpolation between hour centres
   const sig = {
-    feels: hours.map(h => h.feels),
+    feels: hours.map(h => h.heatFeels ?? h.feels),
     night: hours.map((h, i) => (i < WAKE || i >= SLEEP ? 1 : 0)),
     // flames only where the sun is too strong ("avoid"); the "hats on" warning zone stays clear
     uv: hours.map(h => (h.night ? 0 : h.uvLevel === "bad" ? 0.6 + 0.4 * Math.min(1, (h.uv - 6) / 4) : 0)),
@@ -505,7 +507,7 @@ export function mountClock(
   $("headline").innerHTML = `${H.a} <span class="when" style="color:${H.col}">${H.b}</span>`;
   $("sub").textContent = H.sub;
   $("mood").style.setProperty("--mood", H.mood + "55");
-  $("mood").style.setProperty("--mood2", rgb(heatRGB(hours[now].feels, DATA.heat), 0.25));
+  $("mood").style.setProperty("--mood2", rgb(heatRGB(hours[now].heatFeels ?? hours[now].feels, DATA.heat), 0.25));
 
   resize();
   showCentre(home);

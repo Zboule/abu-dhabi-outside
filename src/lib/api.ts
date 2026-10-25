@@ -15,7 +15,8 @@ export const LON = 54.38;
 export const TZ = 'Asia/Dubai';
 /** First day CAMS has non-null air data for this point. */
 export const AIR_FIRST_DAY = '2022-09-01';
-export const WEATHER_MAX_AHEAD = 15;
+/** The forecast's last ~2 days fall back to GFS, the least accurate model here (1.7° too cold). */
+export const WEATHER_MAX_AHEAD = 13;
 export const AIR_MAX_AHEAD = 6;
 
 export interface HourRaw {
@@ -100,7 +101,9 @@ async function fetchHourly(base: string, vars: string[], start: string, end: str
  * ends. Past the ~5-day CAMS window, the forecast API's UV, which comes from GFS by a simplified
  * approximation: right in total over a day but too flat, too low under a high sun (8.4 against
  * 11.3 on a clear June noon) and too high under a low one. It is the mean of the hour ending at
- * its label, so the row takes the next label, scaled by UV_FIX.
+ * its label, so the row takes the next label, scaled by UV_FIX. Scored on 206 GFS runs as issued
+ * (Apr-Oct 2026), 6+ days out it has no skill over the usual CAMS UV for that date and hour, so
+ * it gets a quarter of the weight (hours rated wrong 6.0% -> 5.1%, kids limits).
  */
 function uvAt(w: Series, i: number, cams: (k: string, t: string) => number | null): number | null {
   const t = w.time[i];
@@ -110,7 +113,8 @@ function uvAt(w: Series, i: number, cams: (k: string, t: string) => number | nul
   if (a != null && b != null) return (a + b) / 2;
   if (!next) return w.is_day[i] === 0 ? 0 : null; // the range's last hour is at night
   const gfs = w.uv_index[i + 1];
-  return gfs == null ? null : gfs * uvFix(t);
+  const clim = uvClimate(t);
+  return gfs == null ? clim : 0.25 * gfs * uvFix(t) + 0.75 * clim;
 }
 
 /**
@@ -132,6 +136,76 @@ const UV_FIX: number[][] = [
   [0.50, 0.68, 0.74, 0.88, 0.98, 1.03, 1.01, 0.92, 0.78, 0.61, 0.47, 0.66, 0.50],
   [0.50, 0.74, 0.69, 0.81, 0.91, 0.97, 0.95, 0.86, 0.74, 0.58, 0.45, 0.61, 0.50],
 ];
+/**
+ * The usual CAMS UV of each week of the year (rows, from 1 Jan) and hour 06-18 (columns): the
+ * mean over 2022-2026 of the same hour within 7 days either side.
+ */
+const UV_CLIMATE: number[][] = [
+  [0.0, 0.2, 0.7, 1.9, 3.3, 4.3, 4.7, 4.0, 2.8, 1.5, 0.5, 0.1, 0.0],
+  [0.0, 0.1, 0.7, 1.9, 3.4, 4.5, 4.9, 4.3, 3.0, 1.6, 0.6, 0.1, 0.0],
+  [0.0, 0.2, 0.8, 2.0, 3.5, 4.7, 5.1, 4.5, 3.2, 1.7, 0.6, 0.1, 0.0],
+  [0.0, 0.2, 0.8, 2.0, 3.5, 4.7, 5.1, 4.6, 3.3, 1.8, 0.7, 0.1, 0.0],
+  [0.0, 0.2, 0.8, 2.1, 3.6, 4.9, 5.3, 4.8, 3.6, 2.0, 0.8, 0.2, 0.0],
+  [0.0, 0.2, 0.9, 2.3, 4.1, 5.5, 6.0, 5.4, 4.0, 2.3, 0.9, 0.2, 0.0],
+  [0.0, 0.2, 1.1, 2.6, 4.5, 6.1, 6.6, 6.0, 4.4, 2.5, 1.0, 0.2, 0.0],
+  [0.0, 0.3, 1.1, 2.8, 4.7, 6.3, 6.9, 6.2, 4.6, 2.7, 1.1, 0.3, 0.0],
+  [0.0, 0.3, 1.3, 3.0, 5.0, 6.6, 7.2, 6.5, 4.8, 2.8, 1.2, 0.3, 0.0],
+  [0.0, 0.4, 1.3, 3.0, 5.1, 6.7, 7.3, 6.6, 4.9, 2.9, 1.3, 0.3, 0.0],
+  [0.1, 0.5, 1.5, 3.4, 5.6, 7.2, 7.8, 7.0, 5.2, 3.1, 1.4, 0.3, 0.0],
+  [0.1, 0.5, 1.8, 3.7, 6.0, 7.6, 8.1, 7.2, 5.3, 3.2, 1.4, 0.4, 0.0],
+  [0.1, 0.7, 2.0, 4.0, 6.3, 8.0, 8.4, 7.5, 5.5, 3.3, 1.5, 0.4, 0.0],
+  [0.1, 0.8, 2.2, 4.3, 6.5, 8.2, 8.6, 7.6, 5.6, 3.3, 1.5, 0.4, 0.0],
+  [0.2, 0.9, 2.3, 4.5, 6.6, 8.2, 8.5, 7.5, 5.5, 3.3, 1.5, 0.4, 0.1],
+  [0.2, 1.0, 2.5, 4.8, 7.1, 8.6, 8.8, 7.7, 5.6, 3.4, 1.5, 0.4, 0.1],
+  [0.2, 1.1, 2.8, 5.1, 7.5, 9.1, 9.4, 8.1, 5.9, 3.6, 1.7, 0.5, 0.1],
+  [0.3, 1.2, 3.0, 5.5, 8.0, 9.7, 9.9, 8.7, 6.4, 3.9, 1.9, 0.6, 0.1],
+  [0.3, 1.3, 3.2, 5.7, 8.2, 9.9, 10.2, 9.0, 6.7, 4.1, 2.0, 0.6, 0.1],
+  [0.4, 1.3, 3.2, 5.7, 8.2, 9.8, 10.1, 8.9, 6.6, 4.0, 1.9, 0.6, 0.1],
+  [0.4, 1.4, 3.2, 5.7, 8.1, 9.8, 10.1, 8.9, 6.6, 4.1, 2.0, 0.7, 0.1],
+  [0.4, 1.4, 3.3, 5.9, 8.4, 10.0, 10.3, 9.2, 6.9, 4.3, 2.1, 0.7, 0.1],
+  [0.4, 1.4, 3.3, 5.9, 8.4, 10.1, 10.4, 9.2, 7.0, 4.4, 2.2, 0.8, 0.1],
+  [0.4, 1.4, 3.2, 5.7, 8.1, 9.8, 10.1, 9.0, 6.8, 4.3, 2.2, 0.8, 0.2],
+  [0.4, 1.3, 3.0, 5.3, 7.6, 9.3, 9.6, 8.6, 6.5, 4.2, 2.1, 0.8, 0.2],
+  [0.3, 1.2, 2.8, 5.1, 7.4, 9.0, 9.4, 8.4, 6.4, 4.1, 2.1, 0.8, 0.1],
+  [0.3, 1.1, 2.7, 4.9, 7.1, 8.7, 9.1, 8.2, 6.2, 4.0, 2.0, 0.7, 0.1],
+  [0.3, 1.0, 2.5, 4.7, 6.9, 8.5, 8.9, 8.0, 6.1, 3.9, 2.0, 0.7, 0.1],
+  [0.2, 1.0, 2.5, 4.6, 6.9, 8.5, 8.8, 7.9, 6.0, 3.8, 1.9, 0.7, 0.1],
+  [0.2, 0.9, 2.4, 4.5, 6.7, 8.3, 8.6, 7.7, 5.8, 3.7, 1.8, 0.6, 0.1],
+  [0.2, 0.9, 2.3, 4.3, 6.5, 8.1, 8.5, 7.6, 5.7, 3.6, 1.7, 0.6, 0.1],
+  [0.2, 0.9, 2.3, 4.4, 6.6, 8.3, 8.7, 7.7, 5.8, 3.6, 1.7, 0.6, 0.1],
+  [0.2, 0.9, 2.3, 4.5, 6.8, 8.4, 8.8, 7.8, 5.8, 3.5, 1.7, 0.5, 0.1],
+  [0.2, 0.8, 2.3, 4.5, 6.8, 8.5, 8.8, 7.7, 5.6, 3.4, 1.5, 0.5, 0.1],
+  [0.2, 0.8, 2.3, 4.6, 6.9, 8.5, 8.9, 7.7, 5.5, 3.2, 1.5, 0.4, 0.1],
+  [0.2, 0.8, 2.3, 4.6, 6.9, 8.5, 8.8, 7.6, 5.4, 3.1, 1.3, 0.4, 0.0],
+  [0.2, 0.8, 2.3, 4.5, 6.8, 8.4, 8.6, 7.3, 5.2, 2.9, 1.2, 0.3, 0.0],
+  [0.1, 0.8, 2.3, 4.5, 6.7, 8.2, 8.4, 7.1, 5.0, 2.7, 1.1, 0.2, 0.0],
+  [0.1, 0.8, 2.2, 4.4, 6.6, 8.1, 8.2, 6.9, 4.7, 2.5, 1.0, 0.2, 0.0],
+  [0.1, 0.7, 2.2, 4.3, 6.4, 7.8, 7.8, 6.5, 4.4, 2.3, 0.9, 0.2, 0.0],
+  [0.1, 0.7, 2.1, 4.1, 6.1, 7.4, 7.3, 6.0, 4.0, 2.1, 0.7, 0.1, 0.0],
+  [0.1, 0.6, 1.9, 3.9, 5.8, 6.9, 6.7, 5.5, 3.6, 1.8, 0.6, 0.1, 0.0],
+  [0.1, 0.6, 1.8, 3.6, 5.5, 6.5, 6.3, 5.1, 3.4, 1.6, 0.5, 0.1, 0.0],
+  [0.1, 0.5, 1.6, 3.3, 5.0, 6.0, 5.9, 4.8, 3.1, 1.5, 0.5, 0.1, 0.0],
+  [0.1, 0.5, 1.5, 3.1, 4.7, 5.7, 5.6, 4.5, 2.9, 1.4, 0.4, 0.1, 0.0],
+  [0.0, 0.4, 1.3, 2.8, 4.3, 5.3, 5.3, 4.3, 2.8, 1.3, 0.4, 0.0, 0.0],
+  [0.0, 0.3, 1.2, 2.6, 4.1, 5.0, 5.1, 4.1, 2.6, 1.2, 0.4, 0.0, 0.0],
+  [0.0, 0.3, 1.1, 2.4, 3.8, 4.8, 4.8, 3.9, 2.5, 1.2, 0.3, 0.0, 0.0],
+  [0.0, 0.2, 1.0, 2.2, 3.6, 4.6, 4.7, 3.9, 2.5, 1.2, 0.4, 0.1, 0.0],
+  [0.1, 0.3, 0.9, 2.1, 3.4, 4.3, 4.4, 3.7, 2.5, 1.3, 0.5, 0.2, 0.1],
+  [0.1, 0.2, 0.8, 1.9, 3.1, 4.0, 4.2, 3.5, 2.4, 1.2, 0.5, 0.2, 0.1],
+  [0.0, 0.2, 0.7, 1.8, 3.1, 4.1, 4.3, 3.7, 2.5, 1.3, 0.4, 0.1, 0.0],
+  [0.0, 0.1, 0.7, 1.8, 3.2, 4.2, 4.5, 3.9, 2.7, 1.4, 0.5, 0.1, 0.0],
+];
+function uvClimate(t: string): number {
+  const h = Number(t.slice(11, 13));
+  if (h < 6 || h > 18) return 0;
+  const doy = (Date.parse(`${t.slice(0, 10)}T00:00:00Z`) - Date.parse(`${t.slice(0, 4)}-01-01T00:00:00Z`)) / 86400000;
+  const x = Math.max(0, (doy - 3) / 7);
+  const w0 = Math.min(Math.floor(x), UV_CLIMATE.length - 1);
+  const w1 = (w0 + 1) % UV_CLIMATE.length;
+  const f = Math.min(1, x - w0);
+  return UV_CLIMATE[w0][h - 6] * (1 - f) + UV_CLIMATE[w1][h - 6] * f;
+}
+
 function uvFix(t: string): number {
   const h = Number(t.slice(11, 13));
   return h < 6 || h > 18 ? 1 : UV_FIX[Number(t.slice(5, 7)) - 1][h - 6];
@@ -196,10 +270,12 @@ export async function fetchOutdoor(start: string, end: string): Promise<HourRaw[
 /** City stations near the CAMS grid point; Khalifa City is left out (reads far above the others). */
 export const EAD_STATIONS = ['EAD_HamdanStreet', 'EAD_KhadijaSchool', 'EAD_KhalifaSchool', 'EAD_Mussafah', 'EAD_AlMaqta'];
 /**
- * Stations measure PM2.5 and PM10 but not what they're made of. Desert dust is about
- * 30% PM2.5 by mass, so its fine share is ~0.43x the coarse (PM10 - PM2.5) part.
+ * Stations measure PM2.5 and PM10 but not what they're made of; the dust share of PM2.5 is
+ * taken as this times the coarse (PM10 - PM2.5) part. In storms, when nearly all PM is dust,
+ * the stations read PM2.5/PM10 of 0.21-0.27 (2023-2026), a fine/coarse ratio of about 0.3
+ * (regression on PM10 >= 300: 0.30). 0.43 counted most ordinary PM2.5 as dust.
  */
-export const DUST_FINE_OF_COARSE = 0.43;
+export const DUST_FINE_OF_COARSE = 0.3;
 
 const median = (v: number[]) => {
   const s = [...v].sort((a, b) => a - b);
@@ -250,9 +326,19 @@ function stuckHours(rows: [string, (number | null)[]][], i: number): Set<string>
  * Hourly station medians for [start, end] (Dubai dates), keyed like HourRaw.time.
  * Never throws: a missing month (before 2023, a stale mirror) just leaves those hours to the model.
  */
+/**
+ * EAD labels each hourly mean with the hour it ends ("10 AM" is online by 10:43, and gases lag
+ * CAMS by 0-1h), while our "10:00" row is 10:00-11:00: a reading belongs one row earlier.
+ */
+function rowOfLabel(label: string): string {
+  const h = Number(label.slice(11, 13));
+  return h ? `${label.slice(0, 11)}${String(h - 1).padStart(2, '0')}:00` : `${addDays(label.slice(0, 10), -1)}T23:00`;
+}
+
 export async function fetchStations(start: string, end: string): Promise<Map<string, Measured>> {
   const months: string[] = [];
-  for (let m = start.slice(0, 7); m <= end.slice(0, 7); ) {
+  // the last row of a month is labelled 00:00 the next day
+  for (let m = start.slice(0, 7); m <= addDays(end, 1).slice(0, 7); ) {
     months.push(m);
     const [y, mo] = m.split('-').map(Number);
     m = mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`;
@@ -270,16 +356,18 @@ export async function fetchStations(start: string, end: string): Promise<Map<str
       const rows = Object.entries(doc.hours[s] ?? {}).sort(([a], [b]) => (a < b ? -1 : 1));
       const stuck25 = stuckHours(rows, iPm25);
       const stuck10 = stuckHours(rows, iPm10);
-      for (const [k, v] of rows) {
+      for (const [label, v] of rows) {
+        const k = rowOfLabel(label);
         if (k < lo || k > hi) continue;
         const b = by.get(k) ?? by.set(k, { pm25: [], pm10: [], o3: [], no2: [], so2: [], co: [] }).get(k)!;
         // EAD logs a missing reading as 0 (Hamdan St and Mussafah have no ozone sensor, outages are 0 too)
         const x = (i: number) => (i >= 0 && v[i] != null && v[i]! > 0 ? v[i]! : null);
         // a sensor that has barely moved for a day is stuck, not reading the air
-        const pm25 = stuck25.has(k) ? null : x(iPm25);
-        const pm10 = stuck10.has(k) ? null : x(iPm10);
-        // PM2.5 above PM10 is a broken instrument, not air
-        if (pm25 != null && (pm10 == null || pm25 <= 1.2 * pm10 + 10)) b.pm25.push(pm25);
+        const pm25 = stuck25.has(label) ? null : x(iPm25);
+        const pm10 = stuck10.has(label) ? null : x(iPm10);
+        // PM2.5 near or above PM10 is a broken or wet sensor, not air (seen in up to a third of a
+        // month's hours at Mussafah and Hamdan St)
+        if (pm25 != null && (pm10 == null || pm10 < 20 || pm25 <= 0.9 * pm10)) b.pm25.push(pm25);
         if (pm10 != null) b.pm10.push(pm10);
         if (x(iO3) != null) b.o3.push(x(iO3)!);
         if (x(iNo2) != null) b.no2.push(x(iNo2)!);
