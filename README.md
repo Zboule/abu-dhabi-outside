@@ -4,7 +4,7 @@
 clock where the colour is how hot it feels (green comfortable, orange hot, red too hot),
 flames mark hours with strong sun, a violet gas marks polluted air and a sandy haze marks
 dust. Tap any hour for its heat, sun and air. Arrows move to yesterday and tomorrow;
-longer ranges (3 days, 16 days, a week, the next months, a year average) are hour tiles.
+longer ranges (last week, 3 days, 2 weeks, 1 or 3 months, a year average) are hour tiles.
 
 **Live:** https://zboule.github.io/abu-dhabi-outside/
 
@@ -15,7 +15,7 @@ longer ranges (3 days, 16 days, a week, the next months, a year average) are hou
   stations (Hamdan St, Khadija School, Khalifa School, Mussafah, Al Maqta). The model below misses most
   dust storms and halves traffic NO2, so anything already measured uses the stations.
 - **Air, forecast:** the CAMS model via Open-Meteo, about 5 days ahead, rough.
-- **Next months, year average:** the same dates over the last 3 years, each year rated on its own.
+- **1 and 3 months, year average:** the same dates over the last 3 years, each year rated on its own.
 
 ## How it rates an hour
 

@@ -59,17 +59,20 @@ import {
 // forecast, with a per-day "when can we go out" verdict on top. Data: Open-Meteo
 // (see lib/outdoor/api.ts), fetched straight from the browser.
 
-type Preset = 'today' | '3d' | '16d' | 'week' | 'next1m' | 'next3m' | 'year' | 'custom';
-const PRESETS: { id: Preset; label: string }[] = [
+type Preset = 'week' | 'today' | '3d' | '2w' | 'next1m' | 'next3m' | 'year' | 'custom';
+/** In menu order; sep draws a line above the option. */
+const PRESETS: { id: Preset; label: string; sep?: boolean }[] = [
+  { id: 'week', label: 'Last week' },
   { id: 'today', label: 'Today' },
   { id: '3d', label: '3 days' },
-  { id: '16d', label: '16 days' },
-  { id: 'week', label: 'Last week' },
-  { id: 'next1m', label: 'Next month' },
-  { id: 'next3m', label: 'Next 3 months' },
-  { id: 'year', label: 'Year average' },
-  { id: 'custom', label: 'Custom' },
+  { id: '2w', label: '2 weeks' },
+  { id: 'next1m', label: '1 month' },
+  { id: 'next3m', label: '3 months' },
+  { id: 'year', label: 'Year average', sep: true },
+  { id: 'custom', label: 'Custom', sep: true },
 ];
+/** Range ids from older links. */
+const OLD_PRESET: Record<string, Preset> = { '16d': '2w' };
 const MAX_CUSTOM_DAYS = 92;
 /** Past this many days the good-time rows drop their text and shrink to strips. */
 const COMPACT_AFTER = 16;
@@ -77,7 +80,7 @@ const COMPACT_AFTER = 16;
 function readUrl(): { preset: Preset; from: string; to: string; day: number } {
   const today = dubaiToday();
   const q = new URLSearchParams(window.location.search);
-  const p = q.get('range') as Preset;
+  const p = (OLD_PRESET[q.get('range') ?? ''] ?? q.get('range')) as Preset;
   return {
     preset: PRESETS.some((x) => x.id === p) ? p : 'today',
     from: q.get('from') ?? addDays(today, -30),
@@ -109,21 +112,15 @@ function rangeOf(preset: Preset, from: string, to: string, day = 0): [string, st
       return [addDays(today, day), addDays(today, day)];
     case '3d':
       return [today, addDays(today, 2)];
-    case '16d':
-      return [today, addDays(today, 15)];
+    case '2w':
+      return [today, addDays(today, 13)];
     case 'week':
       return [addDays(today, -6), today];
-    case 'next1m': {
-      // the whole next calendar month
-      const [y, m] = today.split('-').map(Number);
-      const first = new Date(Date.UTC(y, m, 1)); // month index m = next month
-      const last = new Date(Date.UTC(y, m + 1, 0));
-      return [first.toISOString().slice(0, 10), last.toISOString().slice(0, 10)];
-    }
+    case 'next1m':
     case 'next3m': {
-      // from today, three months out
+      // from today, one or three months out
       const [y, m, d] = today.split('-').map(Number);
-      const last = new Date(Date.UTC(y, m - 1 + 3, d - 1));
+      const last = new Date(Date.UTC(y, m - 1 + (preset === 'next1m' ? 1 : 3), d - 1));
       return [today, last.toISOString().slice(0, 10)];
     }
     case 'year':
@@ -311,9 +308,7 @@ export function OutdoorPage() {
                 // on another day (yesterday, tomorrow...) no option is checked: "Today" takes you back
                 value={preset === 'today' && dayOff !== 0 ? ('another-day' as Preset) : preset}
                 label={periodLabel}
-                options={PRESETS.map((p) =>
-                  p.id === 'custom' ? { value: p.id, label: 'Custom range…', sep: true } : { value: p.id, label: p.label },
-                )}
+                options={PRESETS.map((p) => ({ value: p.id, label: p.id === 'custom' ? 'Custom range…' : p.label, sep: p.sep }))}
                 onPick={(p) => {
                   if (p === 'custom') return openCustom();
                   slideDir.current = dayOff > 0 ? 'prev' : dayOff < 0 ? 'next' : null;
@@ -687,7 +682,7 @@ function RatingInfo({ th, sensitive, day }: { th: Thresholds; sensitive: boolean
         </tbody>
       </table>
       <p>
-        Hours {hh(day.from)} to {hh(day.to + 1)} (change in ⚙️ settings). Air: measured at EAD stations for past hours, the CAMS model about 5 days ahead, a typical year after that in the month views: an example year built from real episodes of the last 3, with as many dusty hours as a year usually has, in the season and hours they usually happen. Pollution is too hard to predict that far out, so after the forecast the next month views rate dust alone; only the year average also places polluted hours. With no air data an hour can be OK at best, never good.
+        Hours {hh(day.from)} to {hh(day.to + 1)} (change in ⚙️ settings). Air: measured at EAD stations for past hours, the CAMS model about 5 days ahead, a typical year after that in the month views: an example year built from real episodes of the last 3, with as many dusty hours as a year usually has, in the season and hours they usually happen. Pollution is too hard to predict that far out, so after the forecast the 1 and 3 month views rate dust alone; only the year average also places polluted hours. With no air data an hour can be OK at best, never good.
       </p>
       <p>
         Tile colour is the feels-like temperature. Hatching marks an hour where UV (☀️) or air (🫁) is in the avoid
