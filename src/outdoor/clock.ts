@@ -135,13 +135,10 @@ export function mountClock(
     if (rest.every(h => h.heat === "bad")) all.push("too hot");
     if (rest.every(h => h.air === "bad")) all.push(airIsDust(rest) ? "dusty air" : "smoggy air");
     if (rest.every(h => h.uvLevel === "bad")) all.push("strong sun");
-    // today, a better window may already be behind us: then it's the rest of the day, not all of it
-    const goodBefore = live ? runs(WAKE, isGood, start) : [];
-    const before = goodBefore.length ? goodBefore : live ? runs(WAKE, isOk, start) : [];
-    const was = before.length ? ` It was ${goodBefore.length ? "good" : "OK"} ${range(...before[before.length - 1])}.` : "";
-    const span = was ? "for the rest of the day" : "all day";
-    const sub = (all.length ? `${cap(joinWords(all))} ${span}.` : `${cap(joinWords(blockers(start, SLEEP)))}, one after another.`) + was;
-    return { a: "Stay in", b: was ? "now" : dayWord, col: COLOR.bad, mood: COLOR.bad, sub };
+    // today, a better window may already be behind us (the faint arc): then it's from now on, not all day
+    const missed = live && runs(WAKE, h => isGood(h) || isOk(h), start).length > 0;
+    const sub = all.length ? `${cap(joinWords(all))} ${missed ? "from now on" : "all day"}.` : `${cap(joinWords(blockers(start, SLEEP)))}, one after another.`;
+    return { a: "Stay in", b: missed ? "now" : dayWord, col: COLOR.bad, mood: COLOR.bad, sub };
   }
 
   // ---------- spectrum: feels-like to colour (shared with the tiles, lib/heat.ts) ----------
