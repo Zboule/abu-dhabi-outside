@@ -377,7 +377,7 @@ export function OutdoorPage() {
                   <div className="od-setting">
                     <span>
                       Pool time
-                      <small>Blue arc on Today: warm enough to swim, sun and air OK</small>
+                      <small>Blue line inside the clock: warm enough to swim, sun and air OK</small>
                     </span>
                     <button
                       type="button"
@@ -728,8 +728,8 @@ function RatingInfo({ th, sensitive, day, pool }: { th: Thresholds; sensitive: b
         Kids limits (⚙️ settings) are stricter, for children or asthma{sensitive ? '; they are on' : '; they are off'}.
       </p>
       <p>
-        Pool time (⚙️ settings{pool ? ', on' : ', off'}): blue on the arc around Today, striped blue where going out is
-        fine too. Sun and air are rated as for going out; heat doesn't count, only cold: good from a feels-like of{' '}
+        Pool time (⚙️ settings{pool ? ', on' : ', off'}): a blue line inside the ring on Today (the line outside is
+        for going out). Sun and air are rated as for going out; heat doesn't count, only cold: good from a feels-like of{' '}
         {th.poolGood}°, OK from {th.poolOk}°. Blue for good hours, pale blue for OK ones.
       </p>
       <SensitiveInfo />
