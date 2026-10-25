@@ -38,6 +38,7 @@ import {
   factorLevel,
   CHILL_COLOR,
   heatWord,
+  uvLevelOf,
   NIGHT_HEAT,
   NORMAL,
   pm10At,
@@ -534,6 +535,17 @@ function uvWord(uv: number): string {
 }
 
 const fmt = (v: number | null | undefined, d = 0, unit = '') => (v == null ? 'n/a' : `${v.toFixed(d)}${unit}`);
+
+/** The UV text in parts, each end of the hour coloured by its own level ("UV 6.3" red, "→ 4.3" orange). */
+function uvParts(h: Pick<Hour, 'uv' | 'uvStart' | 'uvEnd' | 'uvLevel'>, th: Thresholds): { t: string; lv: Level }[] {
+  const a = h.uvStart;
+  const b = h.uvEnd;
+  if (a == null || b == null || Math.abs(a - b) < 0.05) return [{ t: uvText(h), lv: h.uvLevel }];
+  return [
+    { t: `UV ${a.toFixed(1)}`, lv: uvLevelOf(a, th) },
+    { t: ` → ${b.toFixed(1)}`, lv: uvLevelOf(b, th) },
+  ];
+}
 
 /** "UV 6.3 → 4.3": the hour's start and end (it is rated on the higher); one value when they match or aren't known. */
 function uvText(h: Pick<Hour, 'uv' | 'uvStart' | 'uvEnd'>): string {
@@ -1218,7 +1230,7 @@ function Tiles(props: {
                     key={c.i}
                     className={`od-tl-cell${h.time === nowKey ? ' now' : ''}${sun ? ' sun' : ''}${air}`}
                     aria-label={`${hh(h.hour)}, feels ${fmt(h.feels, 0, '°')}${sun ? ', strong sun' : ''}${air ? `, ${air.trim() === 'dust' ? 'dust' : 'polluted air'}` : ''}`}
-                    {...pop(() => <HourCard h={h} pool={pool} />)}
+                    {...pop(() => <HourCard h={h} pool={pool} th={th} />)}
                   >
                     {showNum && <span>{h.hour}</span>}
                     {showIcons && (sun || air) && (
@@ -1364,7 +1376,7 @@ function Glyph({ k, color }: { k: keyof typeof GLYPH_PATHS; color: string }) {
     />
   );
 }
-function HourCard({ h, pool }: { h: Hour; pool: boolean }) {
+function HourCard({ h, pool, th }: { h: Hour; pool: boolean; th: Thresholds }) {
   const dusty = RANK_OF[h.dustLevel] >= RANK_OF[h.chemLevel] && RANK_OF[h.dustLevel] > 0;
   const gas = h.air === 'bad' ? (dusty ? GAS_COL.dust : GAS_COL.air) : '';
   const airWord =
@@ -1373,7 +1385,15 @@ function HourCard({ h, pool }: { h: Hour; pool: boolean }) {
     { k: 'heat' as const, lv: h.heat, t: heatWord(h, pool), v: `feels ${fmt(h.feels, 0, '°')}`, col: h.chill && h.heat === 'good' ? CHILL_COLOR[h.chill] : undefined },
     h.night
       ? { k: 'moon' as const, lv: 'na' as Level, t: 'Sun is down', v: '' }
-      : { k: 'sun' as const, lv: h.uvLevel, t: h.uvLevel === 'bad' ? 'Strong sun' : h.uvLevel === 'ok' ? 'Sunny, hats on' : 'Gentle sun', v: uvText(h) },
+      : { k: 'sun' as const, lv: h.uvLevel, t: h.uvLevel === 'bad' ? 'Strong sun' : h.uvLevel === 'ok' ? 'Sunny, hats on' : 'Gentle sun', v: (
+            <>
+              {uvParts(h, th).map((p, i) => (
+                <span key={i} style={{ color: LV_COLOR[p.lv] }}>
+                  {p.t}
+                </span>
+              ))}
+            </>
+          ) },
     { k: 'air' as const, lv: h.air, t: airWord, v: h.adai == null ? 'no data' : dusty || h.chem == null ? `dust ${h.dustIdx}` : `AQI ${h.chem}` },
   ];
   // like the clock's centre: what holds the hour back, at its worst level ("Too hot, strong sun")
@@ -1442,7 +1462,7 @@ function TodayClock(props: {
         heatFeels: h?.heatFeels ?? h?.feels ?? 0,
         pool: h?.pool ?? 'na',
         heatWord: h ? heatWord(h, pool) : '',
-        uvText: h ? uvText(h) : '',
+        uvParts: h ? uvParts(h, th) : [],
         heatCol: h?.chill && h.heat === 'good' ? CHILL_COLOR[h.chill] : undefined,
         heat: h?.heat ?? 'na',
         uv: h?.uv ?? 0,

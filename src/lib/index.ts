@@ -202,6 +202,9 @@ export function heatWord(h: Pick<Hour, 'heat' | 'chill'>, pool: boolean): string
   return 'Comfortable';
 }
 
+/** A UV value's level under the given limits (for colouring one end of an hour's range). */
+export const uvLevelOf = (v: number | null, th: Thresholds): Level => level(v, th.uvGood, th.uvOk);
+
 /** The reverse of level: higher is better (too cold below ok). */
 function coldLevel(v: number | null, good: number, ok: number): Level {
   if (v == null) return 'na';
