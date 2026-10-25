@@ -36,7 +36,7 @@ Not medical advice: a guide for planning a day out.
 ## How it runs
 
 A static Vite + React app on GitHub Pages. `.github/workflows/pages.yml` runs on every push and every
-20 minutes: it catches the EAD station mirror up (`scripts/ead_sync.py`, kept on the `data` branch as one
+hour: it catches the EAD station mirror up (`scripts/ead_sync.py`, kept on the `data` branch as one
 amended commit), builds the site and publishes the mirror next to it at `data/air/YYYY-MM.json`.
 
 ```sh

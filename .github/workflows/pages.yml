@@ -1,4 +1,4 @@
-# Build and publish to GitHub Pages, and keep the station data fresh.
+# Build and publish to GitHub Pages, and keep the station data fresh (hourly).
 #
 # Environment Agency Abu Dhabi (EAD) publishes hourly station readings through an API the
 # browser can't call (no CORS). So every run first catches the mirror up (scripts/ead_sync.py)
@@ -10,7 +10,9 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: '7/20 * * * *' # every 20 minutes (GitHub may start it a few minutes late)
+    # hourly, after EAD posts the hour (GitHub may start it late). Schedules run only from the
+    # default branch, which must stay `main` (it was `data` for a while, and nothing ran)
+    - cron: '17 * * * *'
   workflow_dispatch:
 
 permissions:
