@@ -535,6 +535,14 @@ function uvWord(uv: number): string {
 
 const fmt = (v: number | null | undefined, d = 0, unit = '') => (v == null ? 'n/a' : `${v.toFixed(d)}${unit}`);
 
+/** "UV 6.3 → 4.3": the hour's start and end (it is rated on the higher); one value when they match or aren't known. */
+function uvText(h: Pick<Hour, 'uv' | 'uvStart' | 'uvEnd'>): string {
+  const a = h.uvStart;
+  const b = h.uvEnd;
+  if (a == null || b == null || Math.abs(a - b) < 0.05) return `UV ${fmt(h.uv, 1)}`;
+  return `UV ${a.toFixed(1)} → ${b.toFixed(1)}`;
+}
+
 /** Everything behind one hour's rating: a card per factor, then the air breakdown. */
 function HourDetail({ h, compact = false }: { h: Hour; th: Thresholds; compact?: boolean }) {
   const subs = (Object.keys(h.sub) as Driver[])
@@ -572,7 +580,7 @@ function HourDetail({ h, compact = false }: { h: Hour; th: Thresholds; compact?:
       : {
           f: 1,
           level: h.uvLevel,
-          value: `UV ${fmt(h.uv, 1)}${h.uv != null ? `, ${uvWord(h.uv)}` : ''}`,
+          value: `${uvText(h)}${h.uv != null ? `, ${uvWord(h.uv)}` : ''}`,
           detail: burnFair != null ? `Unprotected skin burns in ${burnFair} to ${burnOlive} min` : 'No burn risk',
         },
     {
@@ -1365,7 +1373,7 @@ function HourCard({ h, pool }: { h: Hour; pool: boolean }) {
     { k: 'heat' as const, lv: h.heat, t: heatWord(h, pool), v: `feels ${fmt(h.feels, 0, '°')}`, col: h.chill && h.heat === 'good' ? CHILL_COLOR[h.chill] : undefined },
     h.night
       ? { k: 'moon' as const, lv: 'na' as Level, t: 'Sun is down', v: '' }
-      : { k: 'sun' as const, lv: h.uvLevel, t: h.uvLevel === 'bad' ? 'Strong sun' : h.uvLevel === 'ok' ? 'Sunny, hats on' : 'Gentle sun', v: `UV ${fmt(h.uv, 0)}` },
+      : { k: 'sun' as const, lv: h.uvLevel, t: h.uvLevel === 'bad' ? 'Strong sun' : h.uvLevel === 'ok' ? 'Sunny, hats on' : 'Gentle sun', v: uvText(h) },
     { k: 'air' as const, lv: h.air, t: airWord, v: h.adai == null ? 'no data' : dusty || h.chem == null ? `dust ${h.dustIdx}` : `AQI ${h.chem}` },
   ];
   // like the clock's centre: what holds the hour back, at its worst level ("Too hot, strong sun")
@@ -1434,6 +1442,7 @@ function TodayClock(props: {
         heatFeels: h?.heatFeels ?? h?.feels ?? 0,
         pool: h?.pool ?? 'na',
         heatWord: h ? heatWord(h, pool) : '',
+        uvText: h ? uvText(h) : '',
         heatCol: h?.chill && h.heat === 'good' ? CHILL_COLOR[h.chill] : undefined,
         heat: h?.heat ?? 'na',
         uv: h?.uv ?? 0,

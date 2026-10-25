@@ -20,6 +20,8 @@ export interface ClockHour {
   /** how the heat reads ("Fresh", "Mild, too cool for the pool", "Too hot"...) and its colour when cool */
   heatWord?: string;
   heatCol?: string;
+  /** "UV 6.3 → 4.3": the hour's start and end */
+  uvText?: string;
   heat: string;
   uv: number;
   uvLevel: string;
@@ -509,7 +511,7 @@ export function mountClock(
         : {
             ic: glyph("sun", LVC[h.uvLevel] || QUIET),
             t: h.uvLevel === "bad" ? "Strong sun" : h.uvLevel === "ok" ? "Sunny, hats on" : "Gentle sun",
-            v: `UV ${Math.round(h.uv)}`, c: LVC[h.uvLevel],
+            v: h.uvText || `UV ${Math.round(h.uv)}`, c: LVC[h.uvLevel],
           },
       {
         ic: glyph("air", gas || LVC[h.air] || QUIET),

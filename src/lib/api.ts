@@ -25,6 +25,9 @@ export interface HourRaw {
   feels: number | null;
   humidity: number | null;
   uv: number | null;
+  /** the UV at the hour's start and end (uv is the higher of the two); absent on typical-year hours */
+  uvStart?: number | null;
+  uvEnd?: number | null;
   night: boolean; // sun below the horizon (Open-Meteo is_day = 0)
   wind: number | null;
   pm10: number | null;
@@ -109,7 +112,8 @@ async function fetchHourly(base: string, vars: string[], start: string, end: str
  * quarter of the weight (hours rated wrong 6.0% -> 5.1%, kids limits). Those are hour means; the
  * instant at an hour is taken as the mean of the two hours around it.
  */
-function uvSeries(w: Series, cams: (k: string, t: string) => number | null): (number | null)[] {
+type UvHour = { uv: number | null; start: number | null; end: number | null };
+function uvSeries(w: Series, cams: (k: string, t: string) => number | null): UvHour[] {
   const n = w.time.length;
   // modelled mean of row i (GFS labels the hour mean at its end, so row i is label i + 1)
   const mean = (i: number): number | null => {
@@ -127,10 +131,10 @@ function uvSeries(w: Series, cams: (k: string, t: string) => number | null): (nu
     return before == null ? after : after == null ? before : (before + after) / 2;
   };
   return w.time.map((_, i) => {
-    if (i === n - 1 && w.is_day[i] === 0) return 0; // the range's last hour is at night
+    if (i === n - 1 && w.is_day[i] === 0) return { uv: 0, start: 0, end: 0 }; // the range's last hour is at night
     const a = at(i);
     const b = at(i + 1);
-    return a == null ? b : b == null ? a : Math.max(a, b);
+    return { uv: a == null ? b : b == null ? a : Math.max(a, b), start: a, end: b };
   });
 }
 
@@ -263,7 +267,9 @@ export async function fetchOutdoor(start: string, end: string): Promise<HourRaw[
     temp: w!.temperature_2m[i] ?? null,
     feels: w!.apparent_temperature[i] ?? null,
     humidity: w!.relative_humidity_2m[i] ?? null,
-    uv: uvs[i],
+    uv: uvs[i].uv,
+    uvStart: uvs[i].start,
+    uvEnd: uvs[i].end,
     night: w!.is_day[i] === 0,
     wind: w!.wind_speed_10m[i] ?? null,
     pm10: av('pm10', t),
