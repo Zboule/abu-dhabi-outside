@@ -94,6 +94,49 @@ async function fetchHourly(base: string, vars: string[], start: string, end: str
   return body.hourly as Series;
 }
 
+/**
+ * The UV index for our row i (the hour from its "HH:00"). CAMS first: it weights the spectrum by
+ * what burns skin, and its value is the instant at the hour, so the row takes the mean of its two
+ * ends. Past the ~5-day CAMS window, the forecast API's UV, which comes from GFS by a simplified
+ * approximation: right in total over a day but too flat, too low under a high sun (8.4 against
+ * 11.3 on a clear June noon) and too high under a low one. It is the mean of the hour ending at
+ * its label, so the row takes the next label, scaled by UV_FIX.
+ */
+function uvAt(w: Series, i: number, cams: (k: string, t: string) => number | null): number | null {
+  const t = w.time[i];
+  const next = w.time[i + 1];
+  const a = cams('uv_index', t);
+  const b = next ? cams('uv_index', next) : null;
+  if (a != null && b != null) return (a + b) / 2;
+  if (!next) return w.is_day[i] === 0 ? 0 : null; // the range's last hour is at night
+  const gfs = w.uv_index[i + 1];
+  return gfs == null ? null : gfs * uvFix(t);
+}
+
+/**
+ * CAMS / GFS UV for each month (rows) and hour 06-18 (columns), fitted on Oct 2023 - Oct 2026 at
+ * this point. On a held-out year it cut the hourly error from 0.64 to 0.42 and matched CAMS on the
+ * hours over 7 (2.04 a day against 2.03; GFS alone 1.70).
+ */
+const UV_FIX: number[][] = [
+  [0.50, 0.80, 0.68, 0.81, 0.92, 0.99, 1.00, 0.93, 0.82, 0.66, 0.50, 0.47, 0.50],
+  [0.50, 0.72, 0.71, 0.83, 0.98, 1.05, 1.06, 0.99, 0.88, 0.73, 0.56, 0.42, 0.50],
+  [0.50, 0.64, 0.75, 0.90, 1.04, 1.08, 1.11, 1.07, 0.92, 0.77, 0.60, 0.44, 0.55],
+  [0.74, 0.68, 0.80, 0.96, 1.10, 1.15, 1.18, 1.10, 0.95, 0.78, 0.60, 0.44, 0.48],
+  [0.65, 0.71, 0.87, 1.04, 1.17, 1.23, 1.23, 1.15, 1.01, 0.84, 0.65, 0.48, 0.44],
+  [0.62, 0.69, 0.85, 1.00, 1.12, 1.19, 1.19, 1.12, 0.99, 0.83, 0.65, 0.48, 0.37],
+  [0.55, 0.59, 0.73, 0.88, 0.99, 1.06, 1.05, 0.99, 0.87, 0.72, 0.58, 0.43, 0.33],
+  [0.60, 0.58, 0.71, 0.87, 1.00, 1.07, 1.07, 0.99, 0.86, 0.69, 0.53, 0.40, 0.38],
+  [0.79, 0.65, 0.79, 0.95, 1.08, 1.15, 1.13, 1.04, 0.89, 0.71, 0.53, 0.40, 0.50],
+  [1.06, 0.69, 0.80, 0.95, 1.07, 1.11, 1.08, 0.98, 0.83, 0.66, 0.49, 0.45, 0.50],
+  [0.50, 0.68, 0.74, 0.88, 0.98, 1.03, 1.01, 0.92, 0.78, 0.61, 0.47, 0.66, 0.50],
+  [0.50, 0.74, 0.69, 0.81, 0.91, 0.97, 0.95, 0.86, 0.74, 0.58, 0.45, 0.61, 0.50],
+];
+function uvFix(t: string): number {
+  const h = Number(t.slice(11, 13));
+  return h < 6 || h > 18 ? 1 : UV_FIX[Number(t.slice(5, 7)) - 1][h - 6];
+}
+
 /** Hourly weather + air for [start, end] (Dubai dates, inclusive), joined on the hour. */
 export async function fetchOutdoor(start: string, end: string): Promise<HourRaw[]> {
   const today = dubaiToday();
@@ -110,7 +153,7 @@ export async function fetchOutdoor(start: string, end: string): Promise<HourRaw[
     ),
     fetchHourly(
       'https://air-quality-api.open-meteo.com/v1/air-quality',
-      ['pm10', 'pm2_5', 'dust', 'nitrogen_dioxide', 'sulphur_dioxide', 'ozone', 'carbon_monoxide', 'us_aqi'],
+      ['pm10', 'pm2_5', 'dust', 'nitrogen_dioxide', 'sulphur_dioxide', 'ozone', 'carbon_monoxide', 'us_aqi', 'uv_index'],
       aStart,
       aEnd,
     ),
@@ -128,9 +171,7 @@ export async function fetchOutdoor(start: string, end: string): Promise<HourRaw[
     temp: w!.temperature_2m[i] ?? null,
     feels: w!.apparent_temperature[i] ?? null,
     humidity: w!.relative_humidity_2m[i] ?? null,
-    // Open-Meteo's UV at "13:00" is the 12:00-13:00 mean; our row "13:00" is 13:00-14:00, so take the next one
-    // (the range's last hour is at night, UV 0)
-    uv: i + 1 < w!.time.length ? (w!.uv_index[i + 1] ?? null) : w!.is_day[i] === 0 ? 0 : null,
+    uv: uvAt(w!, i, av),
     night: w!.is_day[i] === 0,
     wind: w!.wind_speed_10m[i] ?? null,
     pm10: av('pm10', t),

@@ -10,7 +10,10 @@ longer ranges (last week, 3 days, 2 weeks, 1 or 3 months, a year average) are ho
 
 ## Where the numbers come from
 
-- **Weather and UV:** [Open-Meteo](https://open-meteo.com) (forecast up to 16 days, history).
+- **Weather:** [Open-Meteo](https://open-meteo.com) (forecast up to 16 days, history).
+- **UV:** the CAMS UV index via Open-Meteo (history, about 5 days ahead). Further out, Open-Meteo's
+  forecast UV, which comes from GFS by a simplified approximation that flattens the day (too low under a
+  high sun, too high under a low one), corrected by a CAMS/GFS factor per month and hour.
 - **Air, past hours:** measured, the median of 5 [Environment Agency Abu Dhabi](https://www.adairquality.ae)
   stations (Hamdan St, Khadija School, Khalifa School, Mussafah, Al Maqta). The model below misses most
   dust storms and halves traffic NO2, so anything already measured uses the stations.
