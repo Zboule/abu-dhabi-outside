@@ -8,7 +8,7 @@
 // and plain "why" rows follow.
 // Drag around the clock to scrub an hour; tap the middle to come back to now.
 
-import { heatRGB, rgb } from '../lib/heat';
+import { heatRGB, rgb, type HeatLimits } from '../lib/heat';
 
 export interface ClockHour {
   hour: number;
@@ -53,6 +53,8 @@ export function mountClock(
     /** the day's first and last hour (inclusive), from the settings */
     dayFrom?: number;
     dayTo?: number;
+    /** the heat limits the colours follow */
+    heat?: HeatLimits;
   },
 ): () => void {
 
@@ -182,7 +184,7 @@ export function mountClock(
     // continuous spectrum, a thin wedge every 0.5 degree
     const step = 0.5;
     for (let d = 0; d < 360; d += step) {
-      const c = heatRGB(at(sig.feels, d + step / 2));
+      const c = heatRGB(at(sig.feels, d + step / 2), DATA.heat);
       const nt = at(sig.night, d + step / 2);
       g.beginPath();
       g.arc(CX, CX, R_OUT, ang(d), ang(d + step + 0.25));
@@ -492,7 +494,7 @@ export function mountClock(
   $("headline").innerHTML = `${H.a} <span class="when" style="color:${H.col}">${H.b}</span>`;
   $("sub").textContent = H.sub;
   $("mood").style.setProperty("--mood", H.mood + "55");
-  $("mood").style.setProperty("--mood2", rgb(heatRGB(hours[now].feels), 0.25));
+  $("mood").style.setProperty("--mood2", rgb(heatRGB(hours[now].feels, DATA.heat), 0.25));
 
   resize();
   showCentre(home);

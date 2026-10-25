@@ -461,6 +461,7 @@ export function OutdoorPage() {
                   date={raw!.start}
                   dayFrom={day.from}
                   dayTo={day.to}
+                  th={th}
                   intro={firstClock.current}
                   onMounted={() => (firstClock.current = false)}
                 />
@@ -943,12 +944,12 @@ function readDayHours(): DayHours {
 }
 
 /** What the tiles show, like the clock: colour for heat, flames for strong sun, gas for bad air. */
-function TilesKey() {
+function TilesKey({ th }: { th: Thresholds }) {
   return (
     <div className="od-key2">
       <span className="od-key2-heat">
         <span>feels</span>
-        <i style={{ background: heatGradient(18, 47) }} />
+        <i style={{ background: heatGradient(18, 47, th) }} />
         <span className="od-key2-ends">
           <span>18°</span>
           <span>47°</span>
@@ -1098,7 +1099,7 @@ function Tiles(props: {
   return (
     <div className="od-tl">
       <div className="od-tl-bar">
-        <TilesKey />
+        <TilesKey th={th} />
         <div className="od-zoom" role="group" aria-label="Zoom">
           <button type="button" aria-label="Zoom out" disabled={zoom <= 1} onClick={() => setZoom(zoom / 1.6)}>
             −
@@ -1146,7 +1147,7 @@ function Tiles(props: {
                 rowDay(d.day)
               )}
             </button>
-            <TileStrip row={tileRow(d, shown)} hw={hw} past={(c) => c.h!.day === today && c.h!.time < nowKey}>
+            <TileStrip row={tileRow(d, shown, th)} hw={hw} past={(c) => c.h!.day === today && c.h!.time < nowKey}>
               {(c) => {
                 const h = c.h!;
                 const { sun, air } = c;
@@ -1203,7 +1204,7 @@ type TileCell = {
   fx: { sun: number; air: number; dust: number };
 };
 /** One day's shown hours with what the tiles draw: heat colour, strong sun, and the air effect. */
-function tileRow(d: DaySummary, shown: number[]): TileCell[] {
+function tileRow(d: DaySummary, shown: number[], th: Thresholds): TileCell[] {
   return shown.map((i) => {
     const h = d.hours.find((x) => x.hour === i);
     if (!h) return { i, col: [60, 60, 67] as RGB, sun: false, air: '' as const, fx: { sun: 0, air: 0, dust: 0 } };
@@ -1213,7 +1214,7 @@ function tileRow(d: DaySummary, shown: number[]): TileCell[] {
     return {
       i,
       h,
-      col: h.feels == null ? ([60, 60, 67] as RGB) : heatRGB(h.feels),
+      col: h.feels == null ? ([60, 60, 67] as RGB) : heatRGB(h.feels, th),
       sun,
       air: fx.dust >= 0.5 && fx.dust >= fx.air ? ' dust' : fx.air >= 0.5 ? ' air' : '',
       fx,
@@ -1344,11 +1345,12 @@ function TodayClock(props: {
   date: string;
   dayFrom: number;
   dayTo: number;
+  th: Thresholds;
   /** play the ring's sweep-in (first load only; day changes slide instead) */
   intro: boolean;
   onMounted: () => void;
 }) {
-  const { hours, nowKey, live, dayWord, date, dayFrom, dayTo, intro, onMounted } = props;
+  const { hours, nowKey, live, dayWord, date, dayFrom, dayTo, th, intro, onMounted } = props;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const root = ref.current;
@@ -1374,10 +1376,10 @@ function TodayClock(props: {
     });
     // re-render from scratch; the cleanup stops the animation loop and its listeners
     root.innerHTML = CLOCK_HTML;
-    const stop = mountClock(root, { date, nowHour: Number(nowKey.slice(11, 13)), hours: clock, live, dayWord, intro, dayFrom, dayTo });
+    const stop = mountClock(root, { date, nowHour: Number(nowKey.slice(11, 13)), hours: clock, live, dayWord, intro, dayFrom, dayTo, heat: th });
     onMounted();
     return stop;
-  }, [hours, nowKey, live, dayWord, date, dayFrom, dayTo]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hours, nowKey, live, dayWord, date, dayFrom, dayTo, th]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // One phone screen, no scroll: shrink the dial until the page ends at the bottom of the visible
   // area ("Show charts" included). The visual viewport, not vh units (iOS resolves those against a
