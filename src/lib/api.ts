@@ -96,25 +96,42 @@ async function fetchHourly(base: string, vars: string[], start: string, end: str
 }
 
 /**
- * The UV index for our row i (the hour from its "HH:00"). CAMS first: it weights the spectrum by
- * what burns skin, and its value is the instant at the hour, so the row takes the mean of its two
- * ends. Past the ~5-day CAMS window, the forecast API's UV, which comes from GFS by a simplified
- * approximation: right in total over a day but too flat, too low under a high sun (8.4 against
- * 11.3 on a clear June noon) and too high under a low one. It is the mean of the hour ending at
- * its label, so the row takes the next label, scaled by UV_FIX. Scored on 206 GFS runs as issued
- * (Apr-Oct 2026), 6+ days out it has no skill over the usual CAMS UV for that date and hour, so
- * it gets a quarter of the weight (hours rated wrong 6.0% -> 5.1%, kids limits).
+ * The UV index of each row (the hour from its "HH:00"): the higher of the UV at the hour's start
+ * and at its end, not their mean, so an hour is never rated gentler than its strongest minutes
+ * (a 13:00 row averaging 5.3 starts at 6.3, over the kids limit).
+ *
+ * The UV at each hour: CAMS first, which weights the spectrum by what burns skin and gives the
+ * instant at the hour. Past the ~5-day CAMS window, the forecast API's UV, which comes from GFS
+ * by a simplified approximation: right in total over a day but too flat, too low under a high
+ * sun (8.4 against 11.3 on a clear June noon) and too high under a low one. It is the mean of
+ * the hour ending at its label, scaled by UV_FIX. Scored on 206 GFS runs as issued (Apr-Oct
+ * 2026), 6+ days out it has no skill over the usual CAMS UV for that date and hour, so it gets a
+ * quarter of the weight (hours rated wrong 6.0% -> 5.1%, kids limits). Those are hour means; the
+ * instant at an hour is taken as the mean of the two hours around it.
  */
-function uvAt(w: Series, i: number, cams: (k: string, t: string) => number | null): number | null {
-  const t = w.time[i];
-  const next = w.time[i + 1];
-  const a = cams('uv_index', t);
-  const b = next ? cams('uv_index', next) : null;
-  if (a != null && b != null) return (a + b) / 2;
-  if (!next) return w.is_day[i] === 0 ? 0 : null; // the range's last hour is at night
-  const gfs = w.uv_index[i + 1];
-  const clim = uvClimate(t);
-  return gfs == null ? clim : 0.25 * gfs * uvFix(t) + 0.75 * clim;
+function uvSeries(w: Series, cams: (k: string, t: string) => number | null): (number | null)[] {
+  const n = w.time.length;
+  // modelled mean of row i (GFS labels the hour mean at its end, so row i is label i + 1)
+  const mean = (i: number): number | null => {
+    const t = w.time[i];
+    const gfs = w.uv_index[i + 1];
+    const clim = uvClimate(t);
+    return gfs == null ? clim : 0.25 * gfs * uvFix(t) + 0.75 * clim;
+  };
+  // the UV at the start of row i (i = n: the end of the last row)
+  const at = (i: number): number | null => {
+    const c = i < n ? cams('uv_index', w.time[i]) : null;
+    if (c != null) return c;
+    const before = i > 0 ? mean(i - 1) : null;
+    const after = i < n ? mean(i) : null;
+    return before == null ? after : after == null ? before : (before + after) / 2;
+  };
+  return w.time.map((_, i) => {
+    if (i === n - 1 && w.is_day[i] === 0) return 0; // the range's last hour is at night
+    const a = at(i);
+    const b = at(i + 1);
+    return a == null ? b : b == null ? a : Math.max(a, b);
+  });
 }
 
 /**
@@ -240,12 +257,13 @@ export async function fetchOutdoor(start: string, end: string): Promise<HourRaw[
     return i == null || !a ? null : (a[k][i] ?? null);
   };
 
+  const uvs = w ? uvSeries(w, av) : [];
   return (w?.time ?? []).map((t, i) => ({
     time: t,
     temp: w!.temperature_2m[i] ?? null,
     feels: w!.apparent_temperature[i] ?? null,
     humidity: w!.relative_humidity_2m[i] ?? null,
-    uv: uvAt(w!, i, av),
+    uv: uvs[i],
     night: w!.is_day[i] === 0,
     wind: w!.wind_speed_10m[i] ?? null,
     pm10: av('pm10', t),
