@@ -122,12 +122,14 @@ export function mountClock(
     if (good.length) {
       const [a, b] = good[0];
       const w = blockers(start, a);
-      return { a: "Go out", b: range(a, b), col: COLOR.good, mood: COLOR.good, sub: w.length ? `${cap(joinWords(w))} until then.` : "Conditions improve later." };
+      const sub = good[1] ? `And again ${range(...good[1])}.` : w.length ? `${cap(joinWords(w))} until then.` : "Conditions improve later.";
+      return { a: "Go out", b: range(a, b), col: COLOR.good, mood: COLOR.good, sub };
     }
     if (ok.length) {
       const [a, b] = ok[0];
       const isNow = a <= start && live && now >= WAKE;
-      return { a: "Short trips", b: isNow ? `now, until ${fmt(b)}` : range(a, b), col: COLOR.ok, mood: COLOR.ok, sub: "Stay near shade, keep it brief." };
+      const sub = ok[1] ? `And again ${range(...ok[1])}. Keep it brief.` : "Stay near shade, keep it brief.";
+      return { a: "Short trips", b: isNow ? `now, until ${fmt(b)}` : range(a, b), col: COLOR.ok, mood: COLOR.ok, sub };
     }
     // name only what blocks every remaining hour; the rows below carry the rest
     const rest = hours.slice(start, SLEEP);
