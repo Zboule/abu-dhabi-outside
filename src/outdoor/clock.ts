@@ -17,7 +17,7 @@ export interface ClockHour {
   heatFeels?: number;
   /** pool time rating (too cold, UV, air) */
   pool?: string;
-  /** how the heat reads ("Fresh", "Mild, too cool to swim", "Too hot"...) and its colour when cool */
+  /** how the heat reads ("Fresh", "Mild, too cool for the pool", "Too hot"...) and its colour when cool */
   heatWord?: string;
   heatCol?: string;
   heat: string;

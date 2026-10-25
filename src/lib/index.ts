@@ -135,7 +135,7 @@ export interface Hour extends HourRaw {
   cold: Level;
   /** pool time: the worst of cold, UV and air (UV and air as for going out) */
   pool: Level;
-  /** cool, for the words and colours only (not a rating): fresh = deep blue, mild = too cool to swim */
+  /** cool, for the words and colours only (not a rating): fresh = deep blue, mild = too cool for the pool */
   chill: 'fresh' | 'mild' | null;
 }
 
@@ -192,13 +192,13 @@ function level(v: number | null, good: number, ok: number): Level {
   return v <= good ? 'good' : v <= ok ? 'ok' : 'bad';
 }
 
-/** How an hour's heat reads, in step with its colour: blue words for the blue (too cool to swim) end. */
+/** How an hour's heat reads, in step with its colour: blue words for the blue (too cool for the pool) end. */
 export const CHILL_COLOR = { fresh: '#3d8bff', mild: '#7fd0fb' } as const;
 export function heatWord(h: Pick<Hour, 'heat' | 'chill'>, pool: boolean): string {
   if (h.heat === 'bad') return 'Too hot';
   if (h.heat === 'ok') return 'Warm';
   if (h.chill === 'fresh') return 'Fresh';
-  if (h.chill === 'mild') return pool ? 'Mild, too cool to swim' : 'Mild';
+  if (h.chill === 'mild') return pool ? 'Mild, too cool for the pool' : 'Mild';
   return 'Comfortable';
 }
 

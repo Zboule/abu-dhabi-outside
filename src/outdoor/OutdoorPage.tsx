@@ -379,7 +379,7 @@ export function OutdoorPage() {
                   <div className="od-setting">
                     <span>
                       Pool time
-                      <small>Blue line inside the clock: warm enough to swim, sun and air OK</small>
+                      <small>Blue line inside the clock: warm enough for the pool, sun and air OK</small>
                     </span>
                     <button
                       type="button"
