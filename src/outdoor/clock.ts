@@ -166,6 +166,9 @@ export function mountClock(
   };
   const smooth = t => t * t * (3 - 2 * t);
   const HEAT_HOLD = 0.3; // as the tiles: hours blend a little faster than a full hour
+  // flames and gas stay inside their hour (fading only near its edges), so they never spill
+  // under a neighbour hour's pool or going-out line
+  const FX_HOLD = 0.8;
   // hold: the share of each hour that keeps its own value before blending into the next
   function at(arr, deg, hold = 0) {
     let x = ((deg % 360) + 360) % 360 / 15 - 0.5;
@@ -275,7 +278,7 @@ export function mountClock(
     ctx.globalCompositeOperation = "lighter";
     // soft heat glow behind the tongues
     for (let d = 0; d < 360; d += 2) {
-      const u = at(sig.uv, d + 1);
+      const u = at(sig.uv, d + 1, FX_HOLD);
       if (u < 0.02) continue;
       const r1 = R_OUT + 4 + 26 * u;
       const gr = ctx.createRadialGradient(CX, CX, R_OUT - 4, CX, CX, r1);
@@ -285,7 +288,7 @@ export function mountClock(
     }
     // tongues
     for (let d = 0; d < 360; d += 1.6) {
-      const u = at(sig.uv, d);
+      const u = at(sig.uv, d, FX_HOLD);
       if (u < 0.03) continue;
       const n = noise(d * 0.19, t), n2 = noise(d * 0.07 + 10, t * 0.7);
       const q = Math.sqrt(u); // gentle sun: shorter flames, but still bright, never muddy
@@ -315,7 +318,7 @@ export function mountClock(
       if (k >= 1 || k < 0) {
         // respawn somewhere the sun is strong (rejection sampling)
         s.t0 = t; k = 0;
-        for (let tries = 0; tries < 12; tries++) { const a = Math.random() * 360; if (Math.random() < at(sig.uv, a)) { s.a = a; s.u = at(sig.uv, a); break; } s.u = 0; }
+        for (let tries = 0; tries < 12; tries++) { const a = Math.random() * 360; if (Math.random() < at(sig.uv, a, FX_HOLD)) { s.a = a; s.u = at(sig.uv, a, FX_HOLD); break; } s.u = 0; }
       }
       if (!s.u) return;
       const r = R_OUT + 4 + k * S * 0.09 * s.u;
@@ -329,9 +332,9 @@ export function mountClock(
   function drawGas(t) {
     GAS.forEach(p => {
       const a = p.a + t * p.sp + Math.sin(t * 0.4 + p.ph) * 3;
-      const k = at(sig.air, a);
+      const k = at(sig.air, a, FX_HOLD);
       if (k < 0.02) return;
-      const dust = at(sig.dust, a);
+      const dust = at(sig.dust, a, FX_HOLD);
       const r = R_IN - S * (p.base ? 0.03 : 0.04) - p.off * S * 0.03 + Math.sin(t * 0.6 + p.ph * 2) * S * 0.012;
       const x = CX + r * Math.cos(ang(a)), y = CX + r * Math.sin(ang(a));
       const rad = S * 0.045 * p.size * (0.85 + 0.15 * Math.sin(t * 0.9 + p.ph));
