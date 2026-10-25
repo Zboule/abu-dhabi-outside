@@ -36,6 +36,8 @@ import {
   dewPoint,
   dewWord,
   factorLevel,
+  CHILL_COLOR,
+  heatWord,
   NIGHT_HEAT,
   NORMAL,
   pm10At,
@@ -500,6 +502,7 @@ export function OutdoorPage() {
                   dayFrom={day.from}
                   dayTo={day.to}
                   th={th}
+                  pool={pool}
                   compact={span > COMPACT_AFTER}
                   nowKey={nowKey}
                   dateOnly={preset === 'year'}
@@ -1042,6 +1045,7 @@ function Tiles(props: {
   /** the same days, restricted to the day setting: what a day's summary talks about */
   windowed: Map<string, DaySummary>;
   th: Thresholds;
+  pool: boolean;
   compact: boolean;
   nowKey: string;
   dayFrom: number;
@@ -1049,7 +1053,7 @@ function Tiles(props: {
   /** "1 Jan" rows, for the year average where weekdays mean nothing */
   dateOnly?: boolean;
 }) {
-  const { days, windowed, th, compact, nowKey, dayFrom, dayTo, dateOnly } = props;
+  const { days, windowed, th, pool, compact, nowKey, dayFrom, dayTo, dateOnly } = props;
   const today = dubaiToday();
   const pop = usePop();
   const scroller = useRef<HTMLDivElement>(null);
@@ -1206,7 +1210,7 @@ function Tiles(props: {
                     key={c.i}
                     className={`od-tl-cell${h.time === nowKey ? ' now' : ''}${sun ? ' sun' : ''}${air}`}
                     aria-label={`${hh(h.hour)}, feels ${fmt(h.feels, 0, '°')}${sun ? ', strong sun' : ''}${air ? `, ${air.trim() === 'dust' ? 'dust' : 'polluted air'}` : ''}`}
-                    {...pop(() => <HourCard h={h} />)}
+                    {...pop(() => <HourCard h={h} pool={pool} />)}
                   >
                     {showNum && <span>{h.hour}</span>}
                     {showIcons && (sun || air) && (
@@ -1352,13 +1356,13 @@ function Glyph({ k, color }: { k: keyof typeof GLYPH_PATHS; color: string }) {
     />
   );
 }
-function HourCard({ h }: { h: Hour }) {
+function HourCard({ h, pool }: { h: Hour; pool: boolean }) {
   const dusty = RANK_OF[h.dustLevel] >= RANK_OF[h.chemLevel] && RANK_OF[h.dustLevel] > 0;
   const gas = h.air === 'bad' ? (dusty ? GAS_COL.dust : GAS_COL.air) : '';
   const airWord =
     h.air === 'good' ? 'Clean air' : dusty ? (h.air === 'bad' ? 'Dusty air' : 'Some dust') : h.air === 'bad' ? 'Smoggy air' : 'Hazy air';
   const rows = [
-    { k: 'heat' as const, lv: h.heat, t: h.heat === 'bad' ? 'Too hot' : h.heat === 'ok' ? 'Warm' : 'Comfortable', v: `feels ${fmt(h.feels, 0, '°')}` },
+    { k: 'heat' as const, lv: h.heat, t: heatWord(h, pool), v: `feels ${fmt(h.feels, 0, '°')}`, col: h.chill && h.heat === 'good' ? CHILL_COLOR[h.chill] : undefined },
     h.night
       ? { k: 'moon' as const, lv: 'na' as Level, t: 'Sun is down', v: '' }
       : { k: 'sun' as const, lv: h.uvLevel, t: h.uvLevel === 'bad' ? 'Strong sun' : h.uvLevel === 'ok' ? 'Sunny, hats on' : 'Gentle sun', v: `UV ${fmt(h.uv, 0)}` },
@@ -1381,9 +1385,9 @@ function HourCard({ h }: { h: Hour }) {
       <div className="od-hc-why">{why}</div>
       {rows.map((r) => (
         <div className="od-hc-row" key={r.k}>
-          <Glyph k={r.k} color={r.k === 'air' && gas ? gas : LV_COLOR[r.lv]} />
+          <Glyph k={r.k} color={('col' in r && r.col) || (r.k === 'air' && gas ? gas : LV_COLOR[r.lv])} />
           <span>{r.t}</span>
-          <b style={{ color: r.k === 'air' && gas ? gas : r.lv === 'na' ? undefined : LV_COLOR[r.lv] }}>{r.v}</b>
+          <b style={{ color: ('col' in r && r.col) || (r.k === 'air' && gas ? gas : r.lv === 'na' ? undefined : LV_COLOR[r.lv]) }}>{r.v}</b>
         </div>
       ))}
       <div className="od-hc-src">
@@ -1429,6 +1433,8 @@ function TodayClock(props: {
         feels: Math.round(h?.feels ?? 0),
         heatFeels: h?.heatFeels ?? h?.feels ?? 0,
         pool: h?.pool ?? 'na',
+        heatWord: h ? heatWord(h, pool) : '',
+        heatCol: h?.chill && h.heat === 'good' ? CHILL_COLOR[h.chill] : undefined,
         heat: h?.heat ?? 'na',
         uv: h?.uv ?? 0,
         uvLevel: h?.uvLevel ?? 'na',

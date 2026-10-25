@@ -135,6 +135,8 @@ export interface Hour extends HourRaw {
   cold: Level;
   /** pool time: the worst of cold, UV and air (UV and air as for going out) */
   pool: Level;
+  /** cool, for the words and colours only (not a rating): fresh = deep blue, mild = too cool to swim */
+  chill: 'fresh' | 'mild' | null;
 }
 
 export interface Thresholds {
@@ -188,6 +190,16 @@ export function heatFeels(feels: number | null, night: boolean, th: Thresholds):
 function level(v: number | null, good: number, ok: number): Level {
   if (v == null) return 'na';
   return v <= good ? 'good' : v <= ok ? 'ok' : 'bad';
+}
+
+/** How an hour's heat reads, in step with its colour: blue words for the blue (too cool to swim) end. */
+export const CHILL_COLOR = { fresh: '#3d8bff', mild: '#7fd0fb' } as const;
+export function heatWord(h: Pick<Hour, 'heat' | 'chill'>, pool: boolean): string {
+  if (h.heat === 'bad') return 'Too hot';
+  if (h.heat === 'ok') return 'Warm';
+  if (h.chill === 'fresh') return 'Fresh';
+  if (h.chill === 'mild') return pool ? 'Mild, too cool to swim' : 'Mild';
+  return 'Comfortable';
 }
 
 /** The reverse of level: higher is better (too cold below ok). */
@@ -258,6 +270,7 @@ export function enrich(raw: HourRaw[], th: Thresholds): Hour[] {
     const hf = heatFeels(h.feels, h.night, th);
     const heat = level(hf, th.feelsGood, th.feelsOk);
     const cold = coldLevel(h.feels, th.poolGood, th.poolOk);
+    const chill = h.feels == null || h.feels >= th.poolOk ? null : h.feels < th.poolOk - 6 ? 'fresh' : 'mild';
     const uvLevel = level(h.uv, th.uvGood, th.uvOk);
     // worse of pollution and dust; unknown only when both are
     const air: Level =
@@ -286,6 +299,7 @@ export function enrich(raw: HourRaw[], th: Thresholds): Hour[] {
       verdict: verdictOf(heat, uvLevel, air),
       cold,
       pool: verdictOf(cold, uvLevel, air),
+      chill,
     };
   });
 }

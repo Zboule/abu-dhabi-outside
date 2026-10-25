@@ -17,6 +17,9 @@ export interface ClockHour {
   heatFeels?: number;
   /** pool time rating (too cold, UV, air) */
   pool?: string;
+  /** how the heat reads ("Fresh", "Mild, too cool to swim", "Too hot"...) and its colour when cool */
+  heatWord?: string;
+  heatCol?: string;
   heat: string;
   uv: number;
   uvLevel: string;
@@ -494,9 +497,9 @@ export function mountClock(
     const gas = h.air === "bad" ? (dusty ? GAS_COL.dust : GAS_COL.air) : "";
     return [
       {
-        ic: glyph("heat", LVC[h.heat] || QUIET),
-        t: h.heat === "bad" ? "Too hot" : h.heat === "ok" ? "Warm" : "Comfortable",
-        v: `feels ${h.feels}°`, c: LVC[h.heat],
+        ic: glyph("heat", h.heatCol || LVC[h.heat] || QUIET),
+        t: h.heatWord || (h.heat === "bad" ? "Too hot" : h.heat === "ok" ? "Warm" : "Comfortable"),
+        v: `feels ${h.feels}°`, c: h.heatCol || LVC[h.heat],
       },
       h.night
         ? { ic: glyph("moon", QUIET), t: "Sun is down", v: "", c: "" }
