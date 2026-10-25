@@ -162,6 +162,15 @@ export function OutdoorPage() {
   const [to, setTo] = useState(init.to);
   const [draft, setDraft] = useState({ from: init.from, to: init.to });
   const [sensitive, setSensitiveState] = useState(readSensitive);
+  const [pool, setPoolState] = useState(readPool);
+  const setPool = (v: boolean) => {
+    setPoolState(v);
+    try {
+      localStorage.setItem(POOL_KEY, v ? '1' : '0');
+    } catch {
+      /* private mode: the choice just doesn't persist */
+    }
+  };
   const setSensitive = (v: boolean) => {
     setSensitiveState(v);
     try {
@@ -338,7 +347,7 @@ export function OutdoorPage() {
                   <circle cx="12" cy="12" r="3" />
                 </svg>
               </button>
-              <Info>{() => <RatingInfo th={th} sensitive={sensitive} day={day} />}</Info>
+              <Info>{() => <RatingInfo th={th} sensitive={sensitive} day={day} pool={pool} />}</Info>
             </div>,
             headerEl,
           )}
@@ -361,6 +370,22 @@ export function OutdoorPage() {
                       aria-label="Kids limits"
                       className={`od-switch${sensitive ? ' on' : ''}`}
                       onClick={() => setSensitive(!sensitive)}
+                    >
+                      <i />
+                    </button>
+                  </div>
+                  <div className="od-setting">
+                    <span>
+                      Pool time
+                      <small>Blue arc on Today: warm enough to swim, sun and air OK</small>
+                    </span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={pool}
+                      aria-label="Pool time"
+                      className={`od-switch${pool ? ' on' : ''}`}
+                      onClick={() => setPool(!pool)}
                     >
                       <i />
                     </button>
@@ -462,6 +487,7 @@ export function OutdoorPage() {
                   dayFrom={day.from}
                   dayTo={day.to}
                   th={th}
+                  pool={pool}
                   intro={firstClock.current}
                   onMounted={() => (firstClock.current = false)}
                 />
@@ -638,7 +664,7 @@ function HourDetail({ h, compact = false }: { h: Hour; th: Thresholds; compact?:
 
 // ---------------------------------------------------------------- info texts
 
-function RatingInfo({ th, sensitive, day }: { th: Thresholds; sensitive: boolean; day: DayHours }) {
+function RatingInfo({ th, sensitive, day, pool }: { th: Thresholds; sensitive: boolean; day: DayHours; pool: boolean }) {
   return (
     <>
       <h4>How an hour is rated</h4>
@@ -700,6 +726,11 @@ function RatingInfo({ th, sensitive, day }: { th: Thresholds; sensitive: boolean
       </p>
       <p>
         Kids limits (⚙️ settings) are stricter, for children or asthma{sensitive ? '; they are on' : '; they are off'}.
+      </p>
+      <p>
+        Pool time (⚙️ settings{pool ? ', on' : ', off'}): blue on the arc around Today, striped blue where going out is
+        fine too. Sun and air are rated as for going out; heat doesn't count, only cold: good from a feels-like of{' '}
+        {th.poolGood}°, OK from {th.poolOk}°. Pale blue when there are only OK hours.
       </p>
       <SensitiveInfo />
       <p className="od-pop-hint">Tap a tile for its full breakdown, a day name for the day. Faded tiles are past hours. Custom ranges go back to Sep 2022, up to {MAX_CUSTOM_DAYS} days.</p>
@@ -926,6 +957,16 @@ function loadRange(start: string, end: string, forecastEnd: string, typical: boo
   rangeCache.set(key, { at: Date.now(), p });
   p.catch(() => rangeCache.delete(key)); // don't keep a failure
   return p;
+}
+
+/** Pool time arc: on unless this device turned it off; per device, in localStorage. */
+const POOL_KEY = 'od-pool';
+function readPool(): boolean {
+  try {
+    return localStorage.getItem(POOL_KEY) !== '0';
+  } catch {
+    return true;
+  }
 }
 
 /** Kids (stricter) limits: on unless this device turned them off; per device, in localStorage. */
@@ -1370,11 +1411,12 @@ function TodayClock(props: {
   dayFrom: number;
   dayTo: number;
   th: Thresholds;
+  pool: boolean;
   /** play the ring's sweep-in (first load only; day changes slide instead) */
   intro: boolean;
   onMounted: () => void;
 }) {
-  const { hours, nowKey, live, dayWord, date, dayFrom, dayTo, th, intro, onMounted } = props;
+  const { hours, nowKey, live, dayWord, date, dayFrom, dayTo, th, pool, intro, onMounted } = props;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const root = ref.current;
@@ -1386,6 +1428,7 @@ function TodayClock(props: {
         hour: i,
         feels: Math.round(h?.feels ?? 0),
         heatFeels: h?.heatFeels ?? h?.feels ?? 0,
+        pool: h?.pool ?? 'na',
         heat: h?.heat ?? 'na',
         uv: h?.uv ?? 0,
         uvLevel: h?.uvLevel ?? 'na',
@@ -1401,10 +1444,10 @@ function TodayClock(props: {
     });
     // re-render from scratch; the cleanup stops the animation loop and its listeners
     root.innerHTML = CLOCK_HTML;
-    const stop = mountClock(root, { date, nowHour: Number(nowKey.slice(11, 13)), hours: clock, live, dayWord, intro, dayFrom, dayTo, heat: th });
+    const stop = mountClock(root, { date, nowHour: Number(nowKey.slice(11, 13)), hours: clock, live, dayWord, intro, dayFrom, dayTo, heat: th, pool });
     onMounted();
     return stop;
-  }, [hours, nowKey, live, dayWord, date, dayFrom, dayTo, th]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hours, nowKey, live, dayWord, date, dayFrom, dayTo, th, pool]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // One phone screen, no scroll: shrink the dial until the page ends at the bottom of the visible
   // area ("Show charts" included). The visual viewport, not vh units (iOS resolves those against a

@@ -15,6 +15,8 @@ export interface ClockHour {
   feels: number;
   /** feels-like on the daytime scale (night limits are higher): what the colour follows */
   heatFeels?: number;
+  /** pool time rating (too cold, UV, air) */
+  pool?: string;
   heat: string;
   uv: number;
   uvLevel: string;
@@ -57,6 +59,8 @@ export function mountClock(
     dayTo?: number;
     /** the heat limits the colours follow */
     heat?: HeatLimits;
+    /** draw the pool time arc (blue, outside the going-out arc) */
+    pool?: boolean;
   },
 ): () => void {
 
@@ -207,23 +211,46 @@ export function mountClock(
     sh.addColorStop(0, "rgba(0,0,0,.35)"); sh.addColorStop(.45, "rgba(0,0,0,0)"); sh.addColorStop(.9, "rgba(255,255,255,.06)"); sh.addColorStop(1, "rgba(255,255,255,0)");
     g.beginPath(); g.arc(CX, CX, R_OUT, 0, TAU); g.arc(CX, CX, R_IN, TAU, 0, true); g.fillStyle = sh; g.fill();
 
-    // recommended windows: a clean bright arc just inside the ring; today's earlier windows
-    // stay as a faint thin arc, so a missed morning still shows
-    const windows = (from, to) => {
-      const good = runs(from, isGood, to);
-      return good.length ? { rec: good, col: "#6dffa0" } : { rec: runs(from, isOk, to), col: "#ffd27a" };
+    // recommended windows on one line just outside the ring: going out (green, or yellow when
+    // only OK), pool time (blue, pale when only OK), striped where both hold. Today's earlier
+    // windows stay faint and thin, so a missed morning still shows.
+    const windows = (from, to, good, ok, colGood, colOk) => {
+      const g1 = runs(from, good, to);
+      return g1.length ? { rec: g1, col: colGood } : { rec: runs(from, ok, to), col: colOk };
     };
-    const arcs = [{ ...windows(now, SLEEP), width: 4, alpha: 1 }];
-    if (live) arcs.push({ ...windows(WAKE, now), width: 2.5, alpha: 0.4 });
+    const paint = (good, ok, cols) => {
+      const col = new Array(24).fill(null);
+      const parts = live ? [windows(WAKE, now, good, ok, ...cols), windows(now, SLEEP, good, ok, ...cols)] : [windows(now, SLEEP, good, ok, ...cols)];
+      for (const { rec, col: c } of parts) for (const [a, b] of rec) for (let i = a; i < b; i++) col[i] = c;
+      return col;
+    };
+    const out = paint(isGood, isOk, ["#6dffa0", "#ffd27a"]);
+    const swim = DATA.pool ? paint(h => h.pool === "good", h => h.pool === "ok", ["#40c4ff", "#9bdcff"]) : new Array(24).fill(null);
+    const past = i => live && i < now;
+    const key = i => (out[i] || swim[i] ? `${out[i]}|${swim[i]}|${past(i)}` : null);
     g.lineCap = "round";
-    arcs.forEach(({ rec, col, width, alpha }) => rec.forEach(([a, b]) => {
+    for (let i = 0; i < 24; ) {
+      const k = key(i);
+      if (!k) { i++; continue; }
+      let j = i;
+      while (j + 1 < 24 && key(j + 1) === k) j++;
+      // a small gap only where the line starts or stops, or past meets future
+      const edge = n => n < 0 || n > 23 || !key(n) || past(n) !== past(i);
+      const a0 = i * 15 + (edge(i - 1) ? 1.5 : 0), a1 = (j + 1) * 15 - (edge(j + 1) ? 1.5 : 0);
+      const faint = past(i), [o, w] = [out[i], swim[i]];
       g.save();
-      g.globalAlpha = alpha; g.lineWidth = width;
-      g.shadowColor = col; g.shadowBlur = alpha < 1 ? 0 : 12;
-      g.strokeStyle = col;
-      g.beginPath(); g.arc(CX, CX, R_OUT + 8, ang(a * 15 + 1.5), ang(b * 15 - 1.5)); g.stroke();
+      g.globalAlpha = faint ? 0.4 : 1; g.lineWidth = faint ? 2.5 : 4;
+      g.shadowColor = o || w; g.shadowBlur = faint ? 0 : 12;
+      g.strokeStyle = o || w;
+      g.beginPath(); g.arc(CX, CX, R_OUT + 8, ang(a0), ang(a1)); g.stroke();
+      if (o && w) {
+        // pool time over going out: blue hashes along the line
+        g.shadowBlur = 0; g.lineCap = "butt"; g.setLineDash([4, 4]); g.strokeStyle = w;
+        g.beginPath(); g.arc(CX, CX, R_OUT + 8, ang(a0), ang(a1)); g.stroke();
+      }
       g.restore();
-    }));
+      i = j + 1;
+    }
   }
 
   // cheap smooth noise: layered sines, enough for flicker

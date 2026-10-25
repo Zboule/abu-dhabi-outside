@@ -131,6 +131,10 @@ export interface Hour extends HourRaw {
   uvLevel: Level;
   air: Level;
   verdict: Level;
+  /** pool time: only too cold counts against it (feels-like under poolGood / poolOk) */
+  cold: Level;
+  /** pool time: the worst of cold, UV and air (UV and air as for going out) */
+  pool: Level;
 }
 
 export interface Thresholds {
@@ -144,13 +148,16 @@ export interface Thresholds {
   /** dust index limits (EPA PM10 scale: 100 = 154, 150 = 254, 200 = 354, 300 = 424 µg/m³) */
   dustGood: number;
   dustOk: number;
+  /** pool time: feels-like at or above which getting in and out of the water is pleasant / OK */
+  poolGood: number;
+  poolOk: number;
 }
 
 // UV limits assume sunscreen is on: avoid only from "very high" (8+).
-export const NORMAL: Thresholds = { feelsGood: 32, feelsOk: 36, uvGood: 5, uvOk: 7, airGood: 100, airOk: 150, dustGood: 150, dustOk: 300 };
+export const NORMAL: Thresholds = { feelsGood: 32, feelsOk: 36, uvGood: 5, uvOk: 7, airGood: 100, airOk: 150, dustGood: 150, dustOk: 300, poolGood: 26, poolOk: 23 };
 // Kids and asthma: strict on pollution (avoid above the EPA "sensitive groups" line),
 // dust only "avoid" when it's thick (over ~350 µg/m³ of PM10).
-export const SENSITIVE: Thresholds = { feelsGood: 31, feelsOk: 35, uvGood: 4, uvOk: 6, airGood: 75, airOk: 100, dustGood: 100, dustOk: 200 };
+export const SENSITIVE: Thresholds = { feelsGood: 31, feelsOk: 35, uvGood: 4, uvOk: 6, airGood: 75, airOk: 100, dustGood: 100, dustOk: 200, poolGood: 27, poolOk: 24 };
 
 /**
  * Heat limits are higher at night. The feels-like formula weighs humidity heavily, so a humid
@@ -178,6 +185,12 @@ export function heatFeels(feels: number | null, night: boolean, th: Thresholds):
 function level(v: number | null, good: number, ok: number): Level {
   if (v == null) return 'na';
   return v <= good ? 'good' : v <= ok ? 'ok' : 'bad';
+}
+
+/** The reverse of level: higher is better (too cold below ok). */
+function coldLevel(v: number | null, good: number, ok: number): Level {
+  if (v == null) return 'na';
+  return v >= good ? 'good' : v >= ok ? 'ok' : 'bad';
 }
 
 const RANK: Record<Level, number> = { good: 0, na: 0, ok: 1, bad: 2 };
@@ -241,6 +254,7 @@ export function enrich(raw: HourRaw[], th: Thresholds): Hour[] {
 
     const hf = heatFeels(h.feels, h.night, th);
     const heat = level(hf, th.feelsGood, th.feelsOk);
+    const cold = coldLevel(h.feels, th.poolGood, th.poolOk);
     const uvLevel = level(h.uv, th.uvGood, th.uvOk);
     // worse of pollution and dust; unknown only when both are
     const air: Level =
@@ -267,6 +281,8 @@ export function enrich(raw: HourRaw[], th: Thresholds): Hour[] {
       uvLevel,
       air,
       verdict: verdictOf(heat, uvLevel, air),
+      cold,
+      pool: verdictOf(cold, uvLevel, air),
     };
   });
 }
@@ -283,6 +299,7 @@ function withAirOf(h: Hour, from: Hour, src: HourRaw['airSrc']): Hour {
   out.airSrc = src;
   const o = out as unknown as Hour;
   o.verdict = verdictOf(o.heat, o.uvLevel, o.air);
+  o.pool = verdictOf(o.cold, o.uvLevel, o.air);
   return o;
 }
 
@@ -412,6 +429,7 @@ function dustOnly(h: Hour): Hour {
     air: h.dustLevel,
   };
   out.verdict = verdictOf(out.heat, out.uvLevel, out.air);
+  out.pool = verdictOf(out.cold, out.uvLevel, out.air);
   return out;
 }
 /** Days either side (and ±1 hour) that a typical hour's likelihood looks at. */
