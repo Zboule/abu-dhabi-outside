@@ -1,17 +1,20 @@
-// The feels-like colour spectrum shared by the clock and the tiles: green when comfortable,
+// The feels-like colour spectrum shared by the clock and the tiles: blue when too cold for the
+// pool, green when comfortable,
 // through yellow and orange, to red and deep crimson when far too hot. Continuous, so 38°
 // and 45° never look the same and neighbouring hours blend, but placed on the heat limits
 // (kids or not) so the colour agrees with the rating: orange just under the avoid limit,
 // red just over it.
 export type RGB = [number, number, number];
 
-/** The heat limits the spectrum follows (Thresholds.feelsGood / feelsOk). */
-export type HeatLimits = { feelsGood: number; feelsOk: number };
-const NORMAL_HEAT: HeatLimits = { feelsGood: 32, feelsOk: 36 };
+/** The limits the spectrum follows (Thresholds.feelsGood / feelsOk, and poolOk for the cold end). */
+export type HeatLimits = { feelsGood: number; feelsOk: number; poolOk: number };
+const NORMAL_HEAT: HeatLimits = { feelsGood: 32, feelsOk: 36, poolOk: 23 };
 
-function heatStops({ feelsGood: g, feelsOk: o }: HeatLimits): [number, RGB][] {
+function heatStops({ feelsGood: g, feelsOk: o, poolOk: c }: HeatLimits): [number, RGB][] {
   return [
-    [g - 14, [48, 209, 150]], [g - 6, [48, 209, 88]], [g - 1, [140, 222, 60]], [g + 1, [255, 200, 40]],
+    // too cold for the pool: blue, deepening with the cold
+    [c - 6, [10, 110, 255]], [c - 0.3, [90, 200, 250]], [c + 0.3, [48, 209, 150]],
+    [g - 6, [48, 209, 88]], [g - 1, [140, 222, 60]], [g + 1, [255, 200, 40]],
     [o - 1, [255, 140, 20]], [o + 0.3, [255, 69, 58]], [o + 6, [226, 28, 52]], [o + 11, [150, 8, 40]],
   ];
 }

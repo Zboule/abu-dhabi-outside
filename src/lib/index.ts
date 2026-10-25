@@ -170,14 +170,17 @@ export const NIGHT_HEAT = { good: 3, ok: 3.5 };
 
 /**
  * Feels-like moved onto the daytime scale: at night the night limits land on the day limits
- * (piecewise linear), so one rating and one colour scale serve day and night alike.
+ * (piecewise linear), so one rating and one colour scale serve day and night alike. Only the
+ * hot side moves: up to the pool's good limit it stays as it is, so the cold (blue) end of the
+ * colours agrees with pool time, which rates the plain feels-like.
  */
 export function heatFeels(feels: number | null, night: boolean, th: Thresholds): number | null {
   if (feels == null || !night) return feels;
-  const { feelsGood: g, feelsOk: o } = th;
+  const { feelsGood: g, feelsOk: o, poolGood: p } = th;
   const gn = g + NIGHT_HEAT.good;
   const on = o + NIGHT_HEAT.ok;
-  if (feels <= gn) return feels - NIGHT_HEAT.good;
+  if (feels <= p) return feels;
+  if (feels <= gn) return p + ((feels - p) * (g - p)) / (gn - p);
   if (feels <= on) return g + ((feels - gn) * (o - g)) / (on - gn);
   return feels - NIGHT_HEAT.ok;
 }
