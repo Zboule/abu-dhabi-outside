@@ -321,7 +321,7 @@ html { scrollbar-gutter: stable; }
 }
 .od-bar button.on { color: var(--text); background: color-mix(in srgb, var(--muted) 16%, transparent); }
 .od-bar-sp { flex: 1; }
-.od-bar .od-ico { font-size: 15px; padding: 5px 7px; opacity: 0.45; }
+.od-bar .od-ico { font-size: 15px; padding: 5px 7px; opacity: 0.85; color: var(--text); display: inline-flex; }
 .od-bar .od-ico.on { opacity: 1; }
 .od-bar .od-info { margin-left: 4px; flex: none; }
 .od-grid { display: flex; flex-direction: column; gap: 12px; margin: 4px -24px 0; }
@@ -451,7 +451,7 @@ html { scrollbar-gutter: stable; }
 .od-modal-actions button:disabled { opacity: 0.5; cursor: default; }
 .od-bar { justify-content: space-between; }
 .od-head-actions { justify-content: flex-end; }
-.od-bar .od-info { border: 1px solid var(--border); background: var(--panel); color: var(--muted); width: 22px; height: 22px; padding: 0; border-radius: 50%; font: italic 700 12px/20px Georgia, serif; margin-left: 6px; }
+.od-bar .od-info { border: 1px solid color-mix(in srgb, var(--text) 35%, transparent); background: var(--panel); color: var(--text); width: 22px; height: 22px; padding: 0; border-radius: 50%; font: italic 700 12px/20px Georgia, serif; margin-left: 6px; }
 .od-clock {
   position: relative; overflow: hidden; width: 100%; max-width: 480px; margin: 0 auto; border-radius: 28px;
   background: #000; color: var(--ink); padding: 22px 20px 12px;

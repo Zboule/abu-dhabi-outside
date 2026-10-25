@@ -336,7 +336,10 @@ export function OutdoorPage() {
                 </button>
               )}
               <button className="od-ico" aria-label="Settings" onClick={() => setSettingsOpen(true)}>
-                ⚙️
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
               </button>
               <Info>{() => <RatingInfo th={th} sensitive={sensitive} day={day} />}</Info>
             </div>,
@@ -1194,6 +1197,9 @@ function Tiles(props: {
 }
 const RANK_OF: Record<Level, number> = { good: 0, na: 0, ok: 1, bad: 2 };
 
+/** The share of an hour that keeps its own heat colour before blending into the next. */
+const HEAT_HOLD = 0.3;
+
 type TileCell = {
   i: number;
   h?: DaySummary['hours'][number];
@@ -1230,7 +1236,14 @@ const EMPTY_RGB: RGB = [40, 40, 44];
  */
 function TileStrip({ row, hw, past, children }: { row: TileCell[]; hw: number; past: (c: TileCell) => boolean; children: (c: TileCell) => React.ReactNode }) {
   const n = row.length;
-  const heat = `linear-gradient(to right, ${row.map((c, k) => `${rgb(c.h ? c.col : EMPTY_RGB)} ${(((k + 0.5) / n) * 100).toFixed(2)}%`).join(', ')})`;
+  // each hour holds its colour over the middle HEAT_HOLD of its width, then blends into the next
+  const heat = `linear-gradient(to right, ${row
+    .map((c, k) => {
+      const col = rgb(c.h ? c.col : EMPTY_RGB);
+      const pc = (x: number) => `${((x / n) * 100).toFixed(2)}%`;
+      return `${col} ${pc(k + 0.5 - HEAT_HOLD / 2)}, ${col} ${pc(k + 0.5 + HEAT_HOLD / 2)}`;
+    })
+    .join(', ')})`;
   const spill = hw * 0.35;
   const runs: { kind: 'sun' | 'air' | 'dust'; from: number; to: number }[] = [];
   for (const kind of ['sun', 'air', 'dust'] as const) {

@@ -152,9 +152,11 @@ export function mountClock(
     dust: hours.map(h => (h.air !== "good" && RANK[h.dustLevel] >= RANK[h.pollutionLevel] && h.dustLevel !== "good" ? 1 : 0)),
   };
   const smooth = t => t * t * (3 - 2 * t);
-  function at(arr, deg) {
+  const HEAT_HOLD = 0.3; // as the tiles: hours blend a little faster than a full hour
+  // hold: the share of each hour that keeps its own value before blending into the next
+  function at(arr, deg, hold = 0) {
     let x = ((deg % 360) + 360) % 360 / 15 - 0.5;
-    const i = Math.floor(x), f = smooth(x - i);
+    const i = Math.floor(x), f = smooth(Math.min(1, Math.max(0, (x - i - hold / 2) / (1 - hold))));
     const a = arr[(i + 24) % 24], b = arr[(i + 25) % 24];
     return a + (b - a) * f;
   }
@@ -184,7 +186,7 @@ export function mountClock(
     // continuous spectrum, a thin wedge every 0.5 degree
     const step = 0.5;
     for (let d = 0; d < 360; d += step) {
-      const c = heatRGB(at(sig.feels, d + step / 2), DATA.heat);
+      const c = heatRGB(at(sig.feels, d + step / 2, HEAT_HOLD), DATA.heat);
       const nt = at(sig.night, d + step / 2);
       g.beginPath();
       g.arc(CX, CX, R_OUT, ang(d), ang(d + step + 0.25));
