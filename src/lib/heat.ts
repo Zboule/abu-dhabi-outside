@@ -1,24 +1,23 @@
-// The feels-like colour spectrum shared by the clock and the tiles, tied to the heat limits so
-// the colour agrees with the rating: green while good, yellow to orange while OK, red from the
-// first degree to avoid, deepening to crimson when far too hot. Continuous inside each zone, so
-// 38° and 45° never look the same, with a step at each limit.
+// The feels-like colour spectrum shared by the clock and the tiles: green when comfortable,
+// through yellow and orange, to red and deep crimson when far too hot. Continuous, so 38°
+// and 45° never look the same and neighbouring hours blend, but placed on the heat limits
+// (kids or not) so the colour agrees with the rating: orange just under the avoid limit,
+// red just over it.
 export type RGB = [number, number, number];
 
 /** The heat limits the spectrum follows (Thresholds.feelsGood / feelsOk). */
 export type HeatLimits = { feelsGood: number; feelsOk: number };
 const NORMAL_HEAT: HeatLimits = { feelsGood: 32, feelsOk: 36 };
 
-function zones({ feelsGood: g, feelsOk: o }: HeatLimits): [number, RGB][][] {
+function heatStops({ feelsGood: g, feelsOk: o }: HeatLimits): [number, RGB][] {
   return [
-    [[g - 14, [48, 209, 150]], [g - 6, [48, 209, 88]], [g, [140, 222, 60]]],
-    [[g, [255, 200, 40]], [o, [255, 140, 20]]],
-    [[o, [255, 69, 58]], [o + 6, [226, 28, 52]], [o + 11, [150, 8, 40]]],
+    [g - 14, [48, 209, 150]], [g - 6, [48, 209, 88]], [g - 1, [140, 222, 60]], [g + 1, [255, 200, 40]],
+    [o - 1, [255, 140, 20]], [o + 0.3, [255, 69, 58]], [o + 6, [226, 28, 52]], [o + 11, [150, 8, 40]],
   ];
 }
 
 export function heatRGB(f: number, lim: HeatLimits = NORMAL_HEAT): RGB {
-  const [good, ok, bad] = zones(lim);
-  return lerp(f <= lim.feelsGood ? good : f <= lim.feelsOk ? ok : bad, f);
+  return lerp(heatStops(lim), f);
 }
 
 function lerp(S: [number, RGB][], f: number): RGB {
@@ -42,8 +41,6 @@ export const rgb = (c: RGB, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},
 
 /** The spectrum as a CSS gradient over [from, to] °C, for a key. */
 export function heatGradient(from = 18, to = 47, lim: HeatLimits = NORMAL_HEAT): string {
-  const stops = zones(lim)
-    .flat()
-    .map(([t, c]) => `${rgb(c)} ${(((t - from) / (to - from)) * 100).toFixed(1)}%`);
+  const stops = heatStops(lim).map(([t, c]) => `${rgb(c)} ${(((t - from) / (to - from)) * 100).toFixed(1)}%`);
   return `linear-gradient(90deg, ${stops.join(', ')})`;
 }
