@@ -212,8 +212,9 @@ export function mountClock(
     g.beginPath(); g.arc(CX, CX, R_OUT, 0, TAU); g.arc(CX, CX, R_IN, TAU, 0, true); g.fillStyle = sh; g.fill();
 
     // recommended windows on one line just outside the ring: going out (green, or yellow when
-    // only OK), pool time (blue, pale when only OK), striped where both hold. Today's earlier
-    // windows stay faint and thin, so a missed morning still shows.
+    // only OK), pool time (blue for good hours, pale blue for OK ones, both always shown),
+    // striped where both hold. Today's earlier windows stay faint and thin, so a missed morning
+    // still shows.
     const windows = (from, to, good, ok, colGood, colOk) => {
       const g1 = runs(from, good, to);
       return g1.length ? { rec: g1, col: colGood } : { rec: runs(from, ok, to), col: colOk };
@@ -225,7 +226,8 @@ export function mountClock(
       return col;
     };
     const out = paint(isGood, isOk, ["#6dffa0", "#ffd27a"]);
-    const swim = DATA.pool ? paint(h => h.pool === "good", h => h.pool === "ok", ["#40c4ff", "#9bdcff"]) : new Array(24).fill(null);
+    const swim = new Array(24).fill(null);
+    if (DATA.pool) for (let i = live ? WAKE : now; i < SLEEP; i++) swim[i] = { good: "#40c4ff", ok: "#9bdcff" }[hours[i].pool] ?? null;
     const past = i => live && i < now;
     const key = i => (out[i] || swim[i] ? `${out[i]}|${swim[i]}|${past(i)}` : null);
     g.lineCap = "round";

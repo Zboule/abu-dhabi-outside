@@ -730,7 +730,7 @@ function RatingInfo({ th, sensitive, day, pool }: { th: Thresholds; sensitive: b
       <p>
         Pool time (⚙️ settings{pool ? ', on' : ', off'}): blue on the arc around Today, striped blue where going out is
         fine too. Sun and air are rated as for going out; heat doesn't count, only cold: good from a feels-like of{' '}
-        {th.poolGood}°, OK from {th.poolOk}°. Pale blue when there are only OK hours.
+        {th.poolGood}°, OK from {th.poolOk}°. Blue for good hours, pale blue for OK ones.
       </p>
       <SensitiveInfo />
       <p className="od-pop-hint">Tap a tile for its full breakdown, a day name for the day. Faded tiles are past hours. Custom ranges go back to Sep 2022, up to {MAX_CUSTOM_DAYS} days.</p>
