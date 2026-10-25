@@ -214,7 +214,7 @@ export function OutdoorPage() {
     loadRange(start, end, forecastEnd, typical)
       .then((d) => {
         if (!live) return;
-        setRaw({ ...d, start, end, dayOff });
+        setRaw({ ...d, start, end, dayOff, preset });
         // a single day: have yesterday and tomorrow ready, so the arrows feel instant
         if (preset === 'today') {
           for (const n of [dayOff - 1, dayOff + 1]) {
@@ -233,7 +233,8 @@ export function OutdoorPage() {
   const hours = useMemo(() => {
     if (!raw) return null;
     const plain = enrich(raw.plain, th);
-    const all = raw.years ? mergeTypical(plain, enrichTypical(raw.years, th)) : plain;
+    // only the year average forecasts pollution from past years; the month views rate dust alone
+    const all = raw.years ? mergeTypical(plain, enrichTypical(raw.years, th, raw.preset === 'year')) : plain;
     return all.filter((h) => h.day >= raw.start && h.day <= raw.end);
   }, [raw, th]);
   const pending = !!raw && (raw.start !== start || raw.end !== end);
@@ -557,6 +558,7 @@ function HourDetail({ h, compact = false }: { h: Hour; th: Thresholds; compact?:
               <b>{h.chem ?? 'n/a'}</b>
               <em>{LEVEL_LABEL[h.chemLevel]}</em>
               {!compact && h.chemDriver && <small>{DRIVER_LABEL[h.chemDriver]}</small>}
+              {!compact && h.airSrc === 'typical' && h.chem == null && <small>Not forecast this far ahead</small>}
             </span>
             <span className={`lv-${h.dustLevel}`}>
               <span>Dust</span>
@@ -618,7 +620,9 @@ function HourDetail({ h, compact = false }: { h: Hour; th: Thresholds; compact?:
           ))}
           <div className="od-hd-raw">
             {h.airSrc === 'typical'
-              ? `Typical year, a real reading from the last 3: PM2.5 ${fmt(h.pm25)} · PM10 ${fmt(h.pm10)} µg/m³`
+              ? h.chem == null
+                ? `Typical year, a real reading from the last 3: PM10 ${fmt(h.pm10)} µg/m³ (pollution not forecast this far ahead)`
+                : `Typical year, a real reading from the last 3: PM2.5 ${fmt(h.pm25)} · PM10 ${fmt(h.pm10)} µg/m³`
               : h.airSrc === 'station'
               ? `Measured, median of 5 EAD stations: PM2.5 ${fmt(h.pm25)} · PM10 ${fmt(h.pm10)} · NO₂ ${fmt(h.no2)} µg/m³`
               : `Model: PM2.5 ${fmt(h.pm25)} · dust ${fmt(h.dust)} · PM10 ${fmt(h.pm10)} µg/m³ · US AQI ${fmt(h.usAqi)}`}
@@ -679,7 +683,7 @@ function RatingInfo({ th, sensitive, day }: { th: Thresholds; sensitive: boolean
         </tbody>
       </table>
       <p>
-        Hours {hh(day.from)} to {hh(day.to + 1)} (change in ⚙️ settings). Air: measured at EAD stations for past hours, the CAMS model about 5 days ahead, a typical year after that in the month views: an example year built from real episodes of the last 3, with as many dusty and polluted hours as a year usually has, in the season and hours they usually happen. With no air data an hour can be OK at best, never good.
+        Hours {hh(day.from)} to {hh(day.to + 1)} (change in ⚙️ settings). Air: measured at EAD stations for past hours, the CAMS model about 5 days ahead, a typical year after that in the month views: an example year built from real episodes of the last 3, with as many dusty hours as a year usually has, in the season and hours they usually happen. Pollution is too hard to predict that far out, so after the forecast the next month views rate dust alone; only the year average also places polluted hours. With no air data an hour can be OK at best, never good.
       </p>
       <p>
         Tile colour is the feels-like temperature. Hatching marks an hour where UV (☀️) or air (🫁) is in the avoid
@@ -896,7 +900,7 @@ function Dropdown<T extends string | number>(props: {
 /** The end of the day is the hour after the last shown one; the last hour of the day ends at 24:00, not 00:00. */
 const endLabel = (h: number) => (h === 23 ? '24:00' : hh(h + 1));
 
-type Loaded = { plain: HourRaw[]; years: HourRaw[][] | null; start: string; end: string; dayOff: number };
+type Loaded = { plain: HourRaw[]; years: HourRaw[][] | null; start: string; end: string; dayOff: number; preset: Preset };
 
 /** One range's rows, cached for 10 minutes so flipping between days (and prefetching) is free. */
 const rangeCache = new Map<string, { at: number; p: Promise<{ plain: HourRaw[]; years: HourRaw[][] | null }> }>();
@@ -1298,7 +1302,7 @@ function HourCard({ h }: { h: Hour }) {
     h.night
       ? { k: 'moon' as const, lv: 'na' as Level, t: 'Sun is down', v: '' }
       : { k: 'sun' as const, lv: h.uvLevel, t: h.uvLevel === 'bad' ? 'Strong sun' : h.uvLevel === 'ok' ? 'Sunny, hats on' : 'Gentle sun', v: `UV ${fmt(h.uv, 0)}` },
-    { k: 'air' as const, lv: h.air, t: airWord, v: h.adai == null ? 'no data' : dusty ? `dust ${h.dustIdx}` : `AQI ${h.chem}` },
+    { k: 'air' as const, lv: h.air, t: airWord, v: h.adai == null ? 'no data' : dusty || h.chem == null ? `dust ${h.dustIdx}` : `AQI ${h.chem}` },
   ];
   // like the clock's centre: what holds the hour back, at its worst level ("Too hot, strong sun")
   const worst = rows.filter((r) => r.lv === h.verdict && r.lv !== 'na').map((r) => r.t);

@@ -270,8 +270,11 @@ function withAirOf(h: Hour, from: Hour, src: HourRaw['airSrc']): Hour {
  * on their real dates and hours, with their real length and readings: the most typical ones
  * first (where a smoothed likelihood, ±7 days and ±1 hour, is highest). No randomness. The
  * other hours take the middle year among those with clean air at that hour.
+ *
+ * Without `pollution`, the typical hours forecast dust only: no pollution episodes, and
+ * their pollution is left unknown rather than borrowed from a past year.
  */
-export function enrichTypical(years: HourRaw[][], th: Thresholds): Hour[] {
+export function enrichTypical(years: HourRaw[][], th: Thresholds, pollution = true): Hour[] {
   const perYear = years.map((y) => new Map(enrich(y, th).map((h) => [h.time, h])));
   const times = [...new Set(years.flatMap((y) => y.map((h) => h.time)))].sort();
   const NUM = ['temp', 'feels', 'humidity', 'uv', 'wind'] as const;
@@ -304,9 +307,9 @@ export function enrichTypical(years: HourRaw[][], th: Thresholds): Hour[] {
   };
   const base = enrich(avg, th);
   const isDust = (x: Hour) => x.dustLevel === 'bad';
-  const isChem = (x: Hour) => x.chemLevel === 'bad';
+  const isChem = (x: Hour) => pollution && x.chemLevel === 'bad';
   const pDust = times.map((_, i) => chance(i, isDust));
-  const pChem = times.map((_, i) => chance(i, isChem));
+  const pChem = pollution ? times.map((_, i) => chance(i, isChem)) : [];
 
   // Real episodes (runs of bad hours in one past year), the most typical first (in the season and
   // hours they usually happen), until the year has its average number of bad hours of that kind.
@@ -341,7 +344,7 @@ export function enrichTypical(years: HourRaw[][], th: Thresholds): Hour[] {
     return chosen;
   };
   const dustEp = pickEpisodes(isDust, pDust);
-  const chemEp = pickEpisodes(isChem, pChem);
+  const chemEp = pollution ? pickEpisodes(isChem, pChem) : new Map<number, Hour>();
 
   return base.map((h, i) => {
     const d = dustEp.get(i);
@@ -362,8 +365,27 @@ export function enrichTypical(years: HourRaw[][], th: Thresholds): Hour[] {
         }
       }
     }
-    return src ? withAirOf(h, src, 'typical') : h;
+    if (!src) return h;
+    const out = withAirOf(h, src, 'typical');
+    return pollution ? out : dustOnly(out);
   });
+}
+
+/** The hour's air rated on dust alone, its pollution unknown. */
+function dustOnly(h: Hour): Hour {
+  const sub = { ...h.sub, pm25: null, o3: null, no2: null, so2: null, co: null };
+  const out: Hour = {
+    ...h,
+    sub,
+    adai: h.dustIdx,
+    driver: h.dustIdx == null ? null : 'dust',
+    chem: null,
+    chemDriver: null,
+    chemLevel: 'na',
+    air: h.dustLevel,
+  };
+  out.verdict = verdictOf(out.heat, out.uvLevel, out.air);
+  return out;
 }
 /** Days either side (and ±1 hour) that a typical hour's likelihood looks at. */
 const TYP_DAYS = 7;
