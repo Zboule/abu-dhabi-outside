@@ -168,7 +168,7 @@ struct DayRing: View {
                     Text(s.status)
                         .font(.system(size: d * 0.17, weight: .bold, design: .rounded))
                         .foregroundStyle(s.statusLevel == .na ? Color.primary : s.statusLevel.color)
-                        .minimumScaleFactor(0.5)
+                        .minimumScaleFactor(0.4)
                         .lineLimit(1)
                     if !s.ringLine.isEmpty {
                         Text(s.ringLine).font(.system(size: d * 0.095, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
@@ -177,7 +177,7 @@ struct DayRing: View {
                         Text("\(Int(f.rounded()))°").font(.system(size: d * 0.085)).foregroundStyle(.secondary)
                     }
                 }
-                .frame(width: d - line * 2.6)
+                .frame(width: d * 0.6) // the circle narrows away from its middle: keep text clear of the ring
             }
             .frame(width: d, height: d)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
