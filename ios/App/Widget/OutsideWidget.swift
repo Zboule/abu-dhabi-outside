@@ -37,7 +37,10 @@ struct Provider: TimelineProvider {
 
     func getSnapshot(in context: Context, completion: @escaping (Entry) -> Void) {
         Task {
-            let feed = context.isPreview ? (Self.cached() ?? (await Self.fetch())) : (await Self.fetch() ?? Self.cached())
+            // the gallery preview wants an answer fast: the cache first there
+            var feed = context.isPreview ? Self.cached() : nil
+            if feed == nil { feed = await Self.fetch() }
+            if feed == nil { feed = Self.cached() }
             completion(Entry(date: .now, snapshot: .make(feed: feed, settings: .load(), at: .now)))
         }
     }

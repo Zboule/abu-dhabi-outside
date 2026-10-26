@@ -53,15 +53,17 @@ jobs:
         run: |
           xcodebuild -project App.xcodeproj -scheme App -configuration Debug \
             -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO build | tail -30
-          test "${PIPESTATUS[0]}" = 0
+            CODE_SIGNING_ALLOWED=NO build > build.log 2>&1 || { grep -E "error:" build.log | sort -u | head -50; tail -15 build.log; exit 1; }
+          grep -E "\.swift:[0-9]+:[0-9]+: warning:" build.log | sort -u | head -30 || true
 
       - name: Widget tests and renders
         working-directory: ios/App
         run: |
-          set -o pipefail
+          ok=0
           TEST_RUNNER_SNAPSHOT_DIR="$GITHUB_WORKSPACE/screens/widgets" xcodebuild test -project App.xcodeproj -scheme WidgetSnapshots \
-            -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath build CODE_SIGNING_ALLOWED=NO 2>&1 | tail -40
+            -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath build CODE_SIGNING_ALLOWED=NO > test.log 2>&1 || ok=1
+          grep -E "error:|Test Case .*(passed|failed|skipped)|Executed|\*\* TEST" test.log | sort -u | head -60
+          exit $ok
 
       - name: Screenshot the app
         run: |
