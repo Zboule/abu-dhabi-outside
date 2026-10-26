@@ -39,6 +39,11 @@ A static Vite + React app on GitHub Pages. `.github/workflows/pages.yml` runs on
 hour: it catches the EAD station mirror up (`scripts/ead_sync.py`, kept on the `data` branch as one
 amended commit), builds the site and publishes the mirror next to it at `data/air/YYYY-MM.json`.
 
+It also writes the phone widgets' feed, `data/widget/v1.json` (`scripts/widget_feed.mts`): every hour
+from today to the end of the day after tomorrow, rated by the same code under both kids and adult
+limits. Its shape is `contract/widget-feed.v1.schema.json`, and the level colours shared with the
+native code are in `contract/tokens.json`.
+
 ```sh
 npm install
 npm run dev   # station data is only there in the deployed site (or copy it to public/data/air)

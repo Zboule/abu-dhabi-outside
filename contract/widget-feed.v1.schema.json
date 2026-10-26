@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zboule.github.io/abu-dhabi-outside/data/widget/v1.json",
+  "title": "Abu Dhabi Outside widget feed, v1",
+  "description": "Hourly outdoor ratings for the phone widgets, written by scripts/widget_feed.mts. Times are Abu Dhabi wall clock with their +04:00 offset. Additive changes keep v1; anything else is a new v2.json.",
+  "type": "object",
+  "required": ["schemaVersion", "generatedAt", "nowHour", "lastMeasuredAir", "site", "profiles"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "nowHour": { "$ref": "#/$defs/hourTime", "description": "The Dubai hour when the feed was generated." },
+    "lastMeasuredAir": { "oneOf": [{ "$ref": "#/$defs/hourTime" }, { "type": "null" }], "description": "Last hour with EAD station air; later hours use the forecast." },
+    "site": { "type": "string", "format": "uri" },
+    "profiles": {
+      "type": "object",
+      "required": ["kids", "adults"],
+      "properties": { "kids": { "$ref": "#/$defs/profile" }, "adults": { "$ref": "#/$defs/profile" } }
+    }
+  },
+  "$defs": {
+    "hourTime": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:00\\+04:00$" },
+    "level": { "enum": ["good", "ok", "bad", "na"], "description": "bad shows as Avoid; na is unknown." },
+    "num": { "type": ["number", "null"] },
+    "profile": {
+      "type": "object",
+      "required": ["limits", "hours", "days"],
+      "properties": {
+        "limits": { "type": "object", "description": "The Thresholds the hours were rated with (src/lib/index.ts)." },
+        "hours": {
+          "type": "array",
+          "description": "Every hour from today 00:00 to the end of the day after tomorrow, in order.",
+          "items": {
+            "type": "object",
+            "required": ["time", "night", "verdict", "heat", "uv", "air", "pool", "temp", "feels", "uvIndex", "airIndex", "pollution", "dust", "airSource", "reason"],
+            "properties": {
+              "time": { "$ref": "#/$defs/hourTime" },
+              "night": { "type": "boolean" },
+              "verdict": { "$ref": "#/$defs/level", "description": "The worst of heat, uv and air." },
+              "heat": { "$ref": "#/$defs/level" },
+              "uv": { "$ref": "#/$defs/level" },
+              "air": { "$ref": "#/$defs/level" },
+              "pool": { "$ref": "#/$defs/level" },
+              "temp": { "$ref": "#/$defs/num", "description": "°C" },
+              "feels": { "$ref": "#/$defs/num", "description": "Feels-like °C" },
+              "uvIndex": { "$ref": "#/$defs/num" },
+              "airIndex": { "$ref": "#/$defs/num", "description": "Abu Dhabi Air Index (max of pollution and dust)." },
+              "pollution": { "$ref": "#/$defs/num" },
+              "dust": { "$ref": "#/$defs/num" },
+              "airSource": { "enum": ["measured", "forecast", "none"] },
+              "reason": { "type": "string", "description": "Why the hour isn't good, a few words; empty when it is." }
+            }
+          }
+        },
+        "days": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["day", "windows", "best", "airKnown"],
+            "properties": {
+              "day": { "type": "string", "format": "date" },
+              "windows": {
+                "type": "array",
+                "description": "Runs of hours rated ok or better; to is the exclusive end hour (24 = midnight).",
+                "items": {
+                  "type": "object",
+                  "required": ["from", "to", "level"],
+                  "properties": { "from": { "type": "integer" }, "to": { "type": "integer" }, "level": { "enum": ["good", "ok"] } }
+                }
+              },
+              "best": { "oneOf": [{ "$ref": "#/$defs/hourTime" }, { "type": "null" }], "description": "The least bad hour, only when there is no window." },
+              "airKnown": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

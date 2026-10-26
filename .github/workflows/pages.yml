@@ -54,12 +54,23 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run build
       - name: Publish the station data with the site
         run: mkdir -p dist/data && cp -r station-data/air dist/data/air
+
+      # the phone widgets' feed (scripts/widget_feed.mts). A deploy replaces the whole site, so
+      # when it can't be made the last published one ships again, and the run turns red below
+      - name: Widget feed
+        id: feed
+        run: |
+          if ! AIR_DATA=station-data/air node scripts/widget_feed.mts dist/data/widget/v1.json; then
+            echo "failed=1" >> "$GITHUB_OUTPUT"
+            mkdir -p dist/data/widget
+            curl -fsS https://zboule.github.io/abu-dhabi-outside/data/widget/v1.json -o dist/data/widget/v1.json || true
+          fi
 
       - uses: actions/configure-pages@v5
         with:
@@ -74,3 +85,6 @@ jobs:
       # GitHub emails) when no station reading is newer than 6 hours
       - name: Station data is fresh
         run: EAD_DATA=station-data/air python3 scripts/ead_sync.py --check-fresh 6
+      - name: Widget feed was made
+        if: steps.feed.outputs.failed == '1'
+        run: exit 1
