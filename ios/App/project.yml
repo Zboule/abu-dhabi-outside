@@ -1,0 +1,90 @@
+# The Xcode project, generated: `xcodegen generate` (App.xcodeproj is not in git).
+# Capacitor's template, plus the widget extension and its snapshot tests. CI order:
+# npm run build:app, npx cap copy ios, xcodegen generate, npx cap update ios (see .github/workflows/ios.yml).
+name: App
+options:
+  bundleIdPrefix: io.github.zboule
+  deploymentTarget:
+    iOS: "15.0"
+packages:
+  CapApp-SPM:
+    path: CapApp-SPM
+settings:
+  base:
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    CODE_SIGN_STYLE: Automatic
+targets:
+  App:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+        excludes: [public, capacitor.config.json, config.xml]
+      - path: App/public
+        type: folder
+        buildPhase: resources
+      - path: App/capacitor.config.json
+        buildPhase: resources
+      - path: App/config.xml
+        buildPhase: resources
+      - path: Widget/Shared/WidgetSettings.swift
+    configFiles:
+      Debug: ../debug.xcconfig
+    entitlements:
+      path: App/App.entitlements
+      properties:
+        com.apple.security.application-groups: [group.io.github.zboule.abudhabioutside]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.zboule.abudhabioutside
+        INFOPLIST_FILE: App/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    dependencies:
+      - package: CapApp-SPM
+        product: CapApp-SPM
+      - target: OutsideWidget
+        embed: true
+  OutsideWidget:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: [Widget]
+    info:
+      path: Widget/Info.plist
+      properties:
+        CFBundleDisplayName: Abu Dhabi Outside
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Widget/Widget.entitlements
+      properties:
+        com.apple.security.application-groups: [group.io.github.zboule.abudhabioutside]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.zboule.abudhabioutside.widget
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: ""
+  WidgetSnapshots:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources: [Widget/Shared, WidgetSnapshots]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.zboule.abudhabioutside.snapshots
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  App:
+    build:
+      targets:
+        App: all
+  WidgetSnapshots:
+    build:
+      targets:
+        WidgetSnapshots: [test]
+    test:
+      targets: [WidgetSnapshots]

@@ -1,0 +1,83 @@
+# The iOS app: build it, render the widgets and screenshot the app on a simulator.
+# (Signing and TestFlight come later, with the App Store Connect key.)
+# Artifacts: "ios-screens", PNGs of every widget size and of the app.
+name: iOS
+
+on:
+  push:
+    branches: [main]
+    paths: [ios/**, src/**, contract/**, package.json, package-lock.json, capacitor.config.ts, .env.app, .github/workflows/ios.yml]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build:app
+
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          npx cap copy ios
+          (cd ios/App && xcodegen generate)
+          npx cap update ios
+          xcodebuild -version
+
+      - name: Pick a simulator
+        id: sim
+        run: |
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          rt = json.load(sys.stdin)["devices"]
+          ios = sorted((k for k in rt if "iOS" in k), key=lambda k: [int(x) for x in k.rsplit("iOS-", 1)[1].split("-")])
+          for k in reversed(ios):
+              phones = [d for d in rt[k] if d["name"].startswith("iPhone") and "Pro" in d["name"] and "Max" not in d["name"]] or [d for d in rt[k] if d["name"].startswith("iPhone")]
+              if phones:
+                  print(phones[-1]["udid"]); break')
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          xcrun simctl list devices | grep "$udid"
+
+      - name: Build the app
+        working-directory: ios/App
+        run: |
+          xcodebuild -project App.xcodeproj -scheme App -configuration Debug \
+            -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO build | tail -30
+          test "${PIPESTATUS[0]}" = 0
+
+      - name: Widget tests and renders
+        working-directory: ios/App
+        run: |
+          set -o pipefail
+          TEST_RUNNER_SNAPSHOT_DIR="$GITHUB_WORKSPACE/screens/widgets" xcodebuild test -project App.xcodeproj -scheme WidgetSnapshots \
+            -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath build CODE_SIGNING_ALLOWED=NO 2>&1 | tail -40
+
+      - name: Screenshot the app
+        run: |
+          id=${{ steps.sim.outputs.udid }}
+          xcrun simctl boot "$id" || true
+          xcrun simctl bootstatus "$id" -b
+          xcrun simctl status_bar "$id" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 || true
+          xcrun simctl install "$id" ios/App/build/Build/Products/Debug-iphonesimulator/App.app
+          xcrun simctl launch "$id" io.github.zboule.abudhabioutside
+          sleep 20
+          mkdir -p screens
+          xcrun simctl io "$id" screenshot screens/app.png
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-screens
+          path: screens
+          if-no-files-found: warn

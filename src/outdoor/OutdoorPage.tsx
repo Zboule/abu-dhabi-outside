@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Info, PopProvider, usePop } from './Pop';
+import { pushWidgetSettings } from '../native/widgetSettings';
 import { CLOCK_HTML, mountClock, type ClockHour } from './clock';
 import { heatGradient, heatRGB, rgb, type RGB } from '../lib/heat';
 import {
@@ -212,6 +213,7 @@ export function OutdoorPage() {
     preset === 'year' ? addDays(start, -1) : typical ? [end, addDays(dubaiToday(), WEATHER_MAX_AHEAD)].sort()[0] : end;
 
   useEffect(() => writeUrl(preset, from, to, dayOff), [preset, from, to, dayOff]);
+  useEffect(() => pushWidgetSettings({ kids: sensitive, pool, dayFrom: day.from, dayTo: day.to }), [sensitive, pool, day]);
   // Today goes dark (the clock's flames and gas only glow on black). Tied to the period, not
   // to the clock, so the page doesn't flash back to light while another day loads.
   useEffect(() => {

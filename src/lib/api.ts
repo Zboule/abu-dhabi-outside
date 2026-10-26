@@ -322,8 +322,10 @@ function airMonth(m: string): Promise<AirMonth | null> {
   const current = m === dubaiToday().slice(0, 7);
   if (!current && monthCache.has(m)) return monthCache.get(m)!;
   // published next to the site by the GitHub Action (a snapshot of EAD, refreshed every ~20 min)
-  // (outside Vite, e.g. a Node script, there is no BASE_URL: the caller maps /data/air/ itself)
-  const p = fetch(`${import.meta.env?.BASE_URL ?? '/'}data/air/${m}.json`)
+  // (outside Vite, e.g. a Node script, there is no BASE_URL: the caller maps /data/air/ itself;
+  // the phone app's bundle has no copy, so its build points VITE_DATA_BASE at the published site)
+  const base = import.meta.env?.VITE_DATA_BASE ?? import.meta.env?.BASE_URL ?? '/';
+  const p = fetch(`${base}data/air/${m}.json`)
     .then((r) => (r.ok ? (r.json() as Promise<AirMonth>) : null))
     .catch(() => null);
   if (!current) monthCache.set(m, p);

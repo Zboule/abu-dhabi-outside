@@ -1,0 +1,4 @@
+{
+  "description": "What the app shares with its widgets (iOS: App Group group.io.github.zboule.abudhabioutside, UserDefaults). Defaults match the web app's.",
+  "defaults": { "kids": true, "pool": true, "dayFrom": 0, "dayTo": 23 }
+}

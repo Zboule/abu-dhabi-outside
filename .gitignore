@@ -2,3 +2,4 @@ node_modules
 dist
 station-data
 *.tsbuildinfo
+dist-app
