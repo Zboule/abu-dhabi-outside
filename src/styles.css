@@ -63,7 +63,8 @@ body {
 }
 
 @media (max-width: 640px) {
-  .app { padding: 16px 12px calc(24px + env(safe-area-inset-bottom)); }
+  /* the top inset is 0 in a browser tab; in the phone app it clears the clock and the Dynamic Island */
+  .app { padding: calc(16px + env(safe-area-inset-top)) 12px calc(24px + env(safe-area-inset-bottom)); }
   .app header { margin-bottom: 14px; }
   .app header h1 { font-size: 19px; }
 

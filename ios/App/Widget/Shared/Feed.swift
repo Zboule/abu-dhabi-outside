@@ -83,6 +83,9 @@ enum Dubai {
 
 func hh(_ h: Int) -> String { String(format: "%02d:00", h % 24) }
 
+/// The end of a window: "midnight" rather than "00:00".
+func until(_ h: Int) -> String { h % 24 == 0 ? "midnight" : hh(h) }
+
 /// A run of hours rated OK or better, within the day hours. `to` is the exclusive end hour.
 struct Window: Equatable {
     let day: String
@@ -90,7 +93,7 @@ struct Window: Equatable {
     let to: Int
     let level: Level // good when every hour is good, else ok
 
-    var text: String { "\(hh(from))-\(hh(to))" }
+    var text: String { "\(hh(from))-\(until(to))" }
 }
 
 /// What a widget shows at one moment.
@@ -169,7 +172,7 @@ struct Snapshot {
     /// A few words under the status: how long it lasts, or why not.
     var detail: String {
         if phase == .inDay, let n = now {
-            if inWindow, let w = window { return "until \(hh(w.to))" }
+            if inWindow, let w = window { return "until \(until(w.to))" }
             if n.verdict == .bad, !n.reason.isEmpty { return Self.short(n.reason) }
         }
         return ""

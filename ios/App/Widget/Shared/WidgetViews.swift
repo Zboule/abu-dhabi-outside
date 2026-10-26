@@ -215,8 +215,9 @@ struct InlineFace: View {
     let s: Snapshot
 
     var body: some View {
-        if s.inWindow, let w = s.window { Text("\(s.status) outside until \(hh(w.to))") }
-        else if let line = s.windowLine { Text("\(s.status) now. \(line)") }
-        else { Text("Outside: \(s.status)") }
+        if s.inWindow, let w = s.window { Text("\(s.status) outside until \(until(w.to))") }
+        else if let w = s.window {
+            Text("\(s.status). \(w.level == .good ? "Good" : "OK") \(s.windowDay.isEmpty ? "from" : s.windowDay.lowercased()) \(hh(w.from))")
+        } else { Text("Outside: \(s.status)") }
     }
 }
