@@ -130,17 +130,75 @@ struct DayBar: View {
     }
 }
 
+/// Today as a ring, like the page's clock: midnight at the top, noon at the bottom, one segment
+/// per hour coloured by its verdict, past hours and hours outside the day faded, pool time as
+/// a thin inner arc, a dot on now. The verdict sits in the middle.
+struct DayRing: View {
+    let s: Snapshot
+
+    var body: some View {
+        GeometryReader { g in
+            let d = min(g.size.width, g.size.height)
+            let line = d * 0.1
+            ZStack {
+                ForEach(s.wholeDay, id: \.time) { h in
+                    segment(h.hour, gap: 0.004)
+                        .stroke(h.verdict.color, style: StrokeStyle(lineWidth: line, lineCap: .butt))
+                        .opacity(!s.inDay(h) ? 0.15 : h.hour < s.nowHour ? 0.4 : 1)
+                        .padding(line / 2) // the stroke straddles the edge
+                }
+                if s.settings.pool {
+                    ForEach(s.wholeDay.filter { s.inDay($0) && ($0.pool == .good || $0.pool == .ok) }, id: \.time) { h in
+                        segment(h.hour, gap: 0)
+                            .stroke(Color(red: 0x40 / 255, green: 0xc4 / 255, blue: 1).opacity(h.pool == .good ? 1 : 0.5),
+                                    style: StrokeStyle(lineWidth: line * 0.25))
+                            .padding(line * 1.45)
+                    }
+                }
+                if s.wholeDay.contains(where: { $0.hour == s.nowHour }) {
+                    let a = Angle.degrees((Double(s.nowHour) + 0.5) / 24 * 360 - 90)
+                    let r = (d - line) / 2
+                    Circle()
+                        .fill(Color.primary)
+                        .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 1.5))
+                        .frame(width: line * 0.75, height: line * 0.75)
+                        .offset(x: r * cos(a.radians), y: r * sin(a.radians))
+                }
+                VStack(spacing: 1) {
+                    Text(s.status)
+                        .font(.system(size: d * 0.17, weight: .bold, design: .rounded))
+                        .foregroundStyle(s.statusLevel == .na ? Color.primary : s.statusLevel.color)
+                        .minimumScaleFactor(0.5)
+                        .lineLimit(1)
+                    if !s.ringLine.isEmpty {
+                        Text(s.ringLine).font(.system(size: d * 0.095, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    if let f = s.now?.feels, s.phase == .inDay {
+                        Text("\(Int(f.rounded()))°").font(.system(size: d * 0.085)).foregroundStyle(.secondary)
+                    }
+                }
+                .frame(width: d - line * 2.6)
+            }
+            .frame(width: d, height: d)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private func segment(_ hour: Int, gap: Double) -> some Shape {
+        Circle()
+            .trim(from: Double(hour) / 24 + gap, to: Double(hour + 1) / 24 - gap)
+            .rotation(.degrees(-90))
+    }
+}
+
 struct SmallFace: View {
     let s: Snapshot
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            StatusBlock(s: s)
-            Spacer(minLength: 0)
-            WindowLine(s: s)
-            Footer(s: s)
+        ZStack(alignment: .bottomTrailing) {
+            DayRing(s: s)
+            if s.stale { Footer(s: s).fixedSize() }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 

@@ -103,6 +103,7 @@ struct Snapshot {
     let now: FeedHour?
     let phase: Phase
     let today: [FeedHour] // today's hours within the day hours, in order
+    let wholeDay: [FeedHour] // all of today's hours (the ring dims those outside the day hours)
     let nowHour: Int
     let window: Window? // the window we're in, or the next one
     let inWindow: Bool
@@ -149,7 +150,8 @@ struct Snapshot {
 
         let updated = feed?.generated
         let stale = updated.map { date.timeIntervalSince($0) > 6 * 3600 } ?? true
-        return Snapshot(now: now, phase: phase, today: inDayHours.filter { $0.day == todayKey }, nowHour: nowHour,
+        return Snapshot(now: now, phase: phase, today: inDayHours.filter { $0.day == todayKey },
+                        wholeDay: hours.filter { $0.day == todayKey }, nowHour: nowHour,
                         window: next, inWindow: current != nil, windowDay: label, settings: settings,
                         stale: stale, updated: updated)
     }
@@ -186,6 +188,17 @@ struct Snapshot {
     }
 
     var noWindow: Bool { window == nil }
+
+    /// The ring's second line: how long it lasts, or when it turns OK ("OK 18:00", "Tmrw 07:00").
+    var ringLine: String {
+        guard let w = window else { return "" }
+        if inWindow { return "until \(until(w.to))" }
+        let word = w.level == .good ? "Good" : "OK"
+        if windowDay.isEmpty { return "\(word) \(hh(w.from))" }
+        return windowDay == "Tomorrow" ? "Tmrw \(hh(w.from))" : "\(windowDay.prefix(3)) \(hh(w.from))"
+    }
+
+    func inDay(_ h: FeedHour) -> Bool { settings.dayFrom <= h.hour && h.hour <= settings.dayTo }
 
     /// "hot, feels 38°, UV 8.1" -> "Hot, UV 8.1": the reason trimmed to fit a widget.
     static func short(_ reason: String) -> String {

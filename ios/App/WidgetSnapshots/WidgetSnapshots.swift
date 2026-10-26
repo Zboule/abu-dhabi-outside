@@ -66,7 +66,7 @@ final class WidgetSnapshots: XCTestCase {
         for (name, settings, hour) in cases {
             // the feed is from the past: render as if it were fresh
             var s = Snapshot.make(feed: feed, settings: settings, at: at(feed, hour: hour))
-            s = Snapshot(now: s.now, phase: s.phase, today: s.today, nowHour: s.nowHour, window: s.window,
+            s = Snapshot(now: s.now, phase: s.phase, today: s.today, wholeDay: s.wholeDay, nowHour: s.nowHour, window: s.window,
                          inWindow: s.inWindow, windowDay: s.windowDay, settings: s.settings, stale: false, updated: s.updated)
             for scheme in [ColorScheme.light, .dark] {
                 let tag = "\(name)-\(scheme == .dark ? "dark" : "light")"
