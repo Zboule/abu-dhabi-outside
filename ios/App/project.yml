@@ -14,7 +14,6 @@ settings:
     MARKETING_VERSION: "1.0"
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.0"
-    TARGETED_DEVICE_FAMILY: "1"
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: MKB8VRU5Y9
 targets:
@@ -41,6 +40,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.zboule.abudhabioutside
+        TARGETED_DEVICE_FAMILY: "1" # iPhone only (set per target: XcodeGen's target defaults say 1,2)
         INFOPLIST_FILE: App/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       # Release is signed by CI with the distribution certificate and the profiles from
@@ -75,6 +75,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.zboule.abudhabioutside.widget
+        TARGETED_DEVICE_FAMILY: "1" # iPhone only (set per target: XcodeGen's target defaults say 1,2)
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: ""
       configs:
         Release:
@@ -89,6 +90,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.zboule.abudhabioutside.snapshots
+        TARGETED_DEVICE_FAMILY: "1" # iPhone only (set per target: XcodeGen's target defaults say 1,2)
         GENERATE_INFOPLIST_FILE: YES
 schemes:
   App:
