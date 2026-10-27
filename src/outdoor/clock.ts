@@ -161,6 +161,8 @@ export function mountClock(
   const sig = {
     feels: hours.map(h => h.heatFeels ?? h.feels),
     night: hours.map((h, i) => (i < WAKE || i >= SLEEP ? 1 : 0)),
+    // today, the hours already gone sink like the night (a little less: a missed window still reads)
+    past: hours.map((h, i) => (live && i < now ? 1 : 0)),
     // flames only where the sun is too strong ("avoid"); the "hats on" warning zone stays clear.
     // Bad air wins over the sun: an hour with both shows the particles only
     uv: hours.map(h => (h.night || h.air === "bad" ? 0 : h.uvLevel === "bad" ? 0.6 + 0.4 * Math.min(1, (h.uv - 6) / 4) : 0)),
@@ -183,6 +185,8 @@ export function mountClock(
 
   // how much an angle is a hazard hour (sun burning skin, or air hurting lungs), 0..1
   const uvK = d => Math.min(1, at(sig.uv, d, FX_HOLD) / 0.6);
+  // effects of hours already gone fade like their ring
+  const pastFade = d => 1 - 0.7 * at(sig.past, d, 0.85);
   const hazardAt = d => Math.max(uvK(d), at(sig.air, d, FX_HOLD));
 
   // ---------- canvas ----------
@@ -215,7 +219,7 @@ export function mountClock(
       // (drawFlames, drawAirParticles), the temperature doesn't matter
       const haz = hazardAt(d + step / 2);
       if (haz > 0.98) continue;
-      const nt = at(sig.night, d + step / 2);
+      const nt = Math.max(at(sig.night, d + step / 2), 0.75 * at(sig.past, d + step / 2, 0.85));
       g.beginPath();
       g.arc(CX, CX, R_OUT, ang(d), ang(d + step + 0.25));
       g.arc(CX, CX, R_IN, ang(d + step + 0.25), ang(d), true);
@@ -283,7 +287,7 @@ export function mountClock(
     const W = R_OUT - R_IN;
     // soft heat glow behind the tongues, from the band out
     for (let d = 0; d < 360; d += 2) {
-      const u = at(sig.uv, d + 1, FX_HOLD);
+      const u = at(sig.uv, d + 1, FX_HOLD) * pastFade(d + 1);
       if (u < 0.02) continue;
       const r1 = R_OUT + 10 + 40 * u;
       const gr = ctx.createRadialGradient(CX, CX, R_IN, CX, CX, r1);
@@ -293,7 +297,7 @@ export function mountClock(
     }
     // one fire: tongues rooted on the inner edge of the band, burning through it and far out
     for (let d = 0; d < 360; d += 1.5) {
-      const u = at(sig.uv, d, FX_HOLD);
+      const u = at(sig.uv, d, FX_HOLD) * pastFade(d);
       if (u < 0.03) continue;
       const n = noise(d * 0.19, t), n2 = noise(d * 0.07 + 10, t * 0.7);
       const q = Math.sqrt(u); // gentle sun: shorter flames, but still bright, never muddy
@@ -350,7 +354,7 @@ export function mountClock(
     const W = R_OUT - R_IN, scale = S / 360;
     AIR_P.forEach(p => {
       const a = p.a + Math.sin(t * 0.35 + p.ph) * 2.2 + Math.sin(t * 1.7 + p.ph * 3) * 0.35;
-      const k = at(sig.air, a, FX_HOLD);
+      const k = at(sig.air, a, FX_HOLD) * pastFade(a);
       if (k < 0.05) return;
       const dust = at(sig.dust, a, FX_HOLD);
       const r = R_MID + p.off * W * 0.68 + Math.sin(t * 1.2 * p.sp + p.ph * 2) * W * 0.06;
