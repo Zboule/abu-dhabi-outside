@@ -190,6 +190,10 @@ export function mountClock(
   // effects of hours already gone fade like their ring
   const pastFade = d => 1 - 0.7 * at(sig.past, d, 0.85);
   const hazardAt = d => Math.max(uvK(d), airK(d));
+  // the hand-over between a hazard and the ring: over about a third of an hour each side of the
+  // boundary the ring dissolves while the particles (or flames) thin out into it, no hard cut
+  const HAZ_HOLD = 0.3;
+  const ringHaz = d => Math.max(Math.min(1, at(sig.uv, d, HAZ_HOLD) / 0.6), at(sig.air, d, HAZ_HOLD));
 
   // ---------- canvas ----------
   const cv = $("cv"), ctx = cv.getContext("2d");
@@ -218,29 +222,38 @@ export function mountClock(
     g.scale(DPR, DPR);
     // continuous spectrum, a thin wedge every 0.5 degree
     const step = 0.5;
+    const sh = g.createRadialGradient(CX, CX, R_IN, CX, CX, R_OUT);
+    sh.addColorStop(0, "rgba(0,0,0,.35)"); sh.addColorStop(.45, "rgba(0,0,0,0)"); sh.addColorStop(.9, "rgba(255,255,255,.06)"); sh.addColorStop(1, "rgba(255,255,255,0)");
     for (let d = 0; d < 360; d += step) {
       const c = heatRGB(at(sig.feels, d + step / 2, HEAT_HOLD), DATA.heat);
-      // hours to avoid whatever the heat have no ring: the fire or the gas is the ring there
-      // (drawFlames, drawAirParticles), the temperature doesn't matter
-      const haz = hazardAt(d + step / 2);
-      if (haz > 0.98) continue;
       const nt = Math.max(at(sig.night, d + step / 2), 0.75 * at(sig.past, d + step / 2, 0.85));
       g.beginPath();
       g.arc(CX, CX, R_OUT, ang(d), ang(d + step + 0.25));
       g.arc(CX, CX, R_IN, ang(d + step + 0.25), ang(d), true);
       g.closePath();
       // night: sink the colour into a cool slate so it never reads as play time
-      g.fillStyle = rgb(c.map((v, k) => v + ([34, 37, 50][k] - v) * 0.74 * nt), 1 - haz);
+      g.fillStyle = rgb(c.map((v, k) => v + ([34, 37, 50][k] - v) * 0.74 * nt));
       g.fill();
+      // depth: darker inner edge, soft highlight on the outer edge
+      g.fillStyle = sh; g.fill();
     }
-    // depth: darker inner edge, soft highlight on the outer edge
-    const sh = g.createRadialGradient(CX, CX, R_IN, CX, CX, R_OUT);
-    sh.addColorStop(0, "rgba(0,0,0,.35)"); sh.addColorStop(.45, "rgba(0,0,0,0)"); sh.addColorStop(.9, "rgba(255,255,255,.06)"); sh.addColorStop(1, "rgba(255,255,255,0)");
+    // hours to avoid whatever the heat have no ring: the fire or the particles are the ring there
+    // (drawFlames, drawAirParticles), the temperature doesn't matter. The ring is erased with one
+    // smooth conic mask (eased), so it dissolves into them without seams between its slices
     g.save();
-    g.beginPath();
-    for (let d = 0; d < 360; d += step) if (hazardAt(d + step / 2) < 0.5) { g.moveTo(CX + R_OUT * Math.cos(ang(d)), CX + R_OUT * Math.sin(ang(d))); g.arc(CX, CX, R_OUT, ang(d), ang(d + step + 0.25)); g.arc(CX, CX, R_IN, ang(d + step + 0.25), ang(d), true); g.closePath(); }
-    g.clip();
-    g.beginPath(); g.arc(CX, CX, R_OUT, 0, TAU); g.arc(CX, CX, R_IN, TAU, 0, true); g.fillStyle = sh; g.fill();
+    g.globalCompositeOperation = "destination-out";
+    const ease = x => x * x * (3 - 2 * x);
+    if (g.createConicGradient) {
+      const mask = g.createConicGradient(ang(0), CX, CX);
+      for (let d = 0; d <= 360; d += 1) mask.addColorStop(d / 360, `rgba(0,0,0,${ease(Math.min(1, ringHaz(d)))})`);
+      g.fillStyle = mask;
+      g.beginPath(); g.arc(CX, CX, R_OUT + 1, 0, TAU); g.arc(CX, CX, R_IN - 1, TAU, 0, true); g.fill();
+    } else {
+      for (let d = 0; d < 360; d += step) {
+        g.fillStyle = `rgba(0,0,0,${ease(Math.min(1, ringHaz(d + step / 2)))})`;
+        g.beginPath(); g.arc(CX, CX, R_OUT + 1, ang(d), ang(d + step)); g.arc(CX, CX, R_IN - 1, ang(d + step), ang(d), true); g.closePath(); g.fill();
+      }
+    }
     g.restore();
 
     // recommended windows, outside the ring: going out on the line next to it (green, or yellow
@@ -360,7 +373,7 @@ export function mountClock(
     const W = R_OUT - R_IN, scale = S / 360;
     AIR_P.forEach(p => {
       const a = p.a + Math.sin(t * 0.35 + p.ph) * 2.2 + Math.sin(t * 1.7 + p.ph * 3) * 0.35;
-      const k = airK(a) * dayK(a) * pastFade(a);
+      const k = at(sig.air, a, HAZ_HOLD) * dayK(a) * pastFade(a);
       if (k < 0.05) return;
       const dust = at(sig.dust, a, FX_HOLD);
       const r = R_MID + p.off * W * 0.68 + Math.sin(t * 1.2 * p.sp + p.ph * 2) * W * 0.06;
