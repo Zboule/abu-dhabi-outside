@@ -40,9 +40,11 @@ final class WidgetSnapshots: XCTestCase {
         // no em dash anywhere a widget writes
         for h in 0..<24 {
             let s = Snapshot.make(feed: feed, settings: narrow, at: at(feed, hour: h))
-            for t in [s.status, s.detail, s.windowLine ?? ""] { XCTAssertFalse(t.contains("\u{2014}"), t) }
+            for t in [s.status, s.subline, s.ringLine] { XCTAssertFalse(t.contains("\u{2014}"), t) }
         }
         XCTAssertEqual(Snapshot.short("hot, feels 38°, UV 8.1"), "Hot, UV 8.1")
+        // the clock's marks reach the widget: every day hour has its heat colour
+        XCTAssertTrue(kids.filter { !$0.night }.allSatisfy { $0.heatColor != nil })
     }
 
     func testRender() throws {
@@ -58,6 +60,7 @@ final class WidgetSnapshots: XCTestCase {
 
         let cases: [(String, WidgetSettings, Int)] = [
             ("kids-07h", WidgetSettings(), 7),
+            ("kids-11h", WidgetSettings(), 11),
             ("kids-14h", WidgetSettings(), 14),
             ("kids-19h", WidgetSettings(), 19),
             ("adults-10h", adults, 10),

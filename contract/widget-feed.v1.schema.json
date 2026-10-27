@@ -31,7 +31,7 @@
           "description": "Every hour from today 00:00 to the end of the day after tomorrow, in order.",
           "items": {
             "type": "object",
-            "required": ["time", "night", "verdict", "heat", "uv", "air", "pool", "temp", "feels", "uvIndex", "airIndex", "pollution", "dust", "airSource", "reason"],
+            "required": ["time", "night", "verdict", "heat", "uv", "air", "pool", "temp", "feels", "uvIndex", "airIndex", "pollution", "dust", "airSource", "reason", "heatColor", "strongSun", "badAir"],
             "properties": {
               "time": { "$ref": "#/$defs/hourTime" },
               "night": { "type": "boolean" },
@@ -47,7 +47,10 @@
               "pollution": { "$ref": "#/$defs/num" },
               "dust": { "$ref": "#/$defs/num" },
               "airSource": { "enum": ["measured", "forecast", "none"] },
-              "reason": { "type": "string", "description": "Why the hour isn't good, a few words; empty when it is." }
+              "reason": { "type": "string", "description": "Why the hour isn't good, a few words; empty when it is." },
+              "heatColor": { "type": ["string", "null"], "pattern": "^#[0-9a-f]{6}$", "description": "The clock's colour for how hot it feels (night-adjusted, on this profile's limits)." },
+              "strongSun": { "type": "boolean", "description": "UV over the limit in daylight: the clock's flames." },
+              "badAir": { "enum": ["smog", "dust", null], "description": "Air over the limit, and what from: the clock's violet gas or sandy haze." }
             }
           }
         },

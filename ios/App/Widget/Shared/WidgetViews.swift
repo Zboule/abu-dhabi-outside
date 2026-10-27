@@ -1,13 +1,34 @@
 import SwiftUI
 
-// The widget faces, shared with the snapshot tests (WidgetSnapshots). Colours: contract/tokens.json.
+// The widget faces, shared with the snapshot tests (WidgetSnapshots). They speak the page's clock:
+// colour is how hot it feels, flames mark strong sun, a violet cloud smoggy air and a sandy one
+// dust, a line outside marks the good time to go out (green good, yellow OK), a blue line inside
+// pool time. Colours: contract/tokens.json and src/outdoor/clock.ts.
+
+extension Color {
+    init(hex: String) {
+        let v = UInt64(hex.dropFirst(), radix: 16) ?? 0
+        self.init(red: Double((v >> 16) & 0xff) / 255, green: Double((v >> 8) & 0xff) / 255, blue: Double(v & 0xff) / 255)
+    }
+}
+
+enum Palette {
+    static let pool = (good: Color(hex: "#40c4ff"), ok: Color(hex: "#9bdcff"))
+    static let smog = Color(hex: "#b98cff")
+    static let dust = Color(hex: "#e2b872")
+    static let flame = Color(hex: "#ffe27a")
+    static let noData = Color(hex: "#3c3c43")
+
+    static func heat(_ h: FeedHour) -> Color { h.heatColor.map(Color.init(hex:)) ?? noData }
+    static func air(_ kind: String?) -> Color? { kind == "dust" ? dust : kind == "smog" ? smog : nil }
+}
 
 extension Level {
     var color: Color {
         switch self {
-        case .good: return Color(red: 0x30 / 255, green: 0xd1 / 255, blue: 0x58 / 255)
-        case .ok: return Color(red: 1, green: 0xb3 / 255, blue: 0x40 / 255)
-        case .bad: return Color(red: 1, green: 0x45 / 255, blue: 0x3a / 255)
+        case .good: return Color(hex: "#30d158")
+        case .ok: return Color(hex: "#ffb340")
+        case .bad: return Color(hex: "#ff453a")
         case .na: return Color.secondary.opacity(0.5)
         }
     }
@@ -22,172 +43,130 @@ extension Level {
     }
 }
 
-/// The status block both home-screen sizes start with.
-struct StatusBlock: View {
+/// Flame and cloud marks for one hour, as the clock's flames and gas.
+struct HourMarks: View {
+    let h: FeedHour
+    let size: CGFloat
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if h.strongSun == true {
+                Image(systemName: "flame.fill").foregroundStyle(Palette.flame)
+            }
+            if let c = Palette.air(h.badAir) {
+                Image(systemName: "cloud.fill").foregroundStyle(c)
+            }
+        }
+        .font(.system(size: size, weight: .bold))
+        .shadow(color: .black.opacity(0.45), radius: 1)
+    }
+}
+
+struct Stale: View {
     let s: Snapshot
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("Outside")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-            HStack(spacing: 6) {
-                Circle().fill(s.statusLevel.color).frame(width: 12, height: 12)
-                Text(s.status)
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
-                    .minimumScaleFactor(0.6)
-                    .lineLimit(1)
-            }
-            if !s.detail.isEmpty {
-                Text(s.detail).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
-            }
+        if s.stale {
+            Text(s.updated.map { "as of \($0.formatted(.dateTime.hour().minute()))" } ?? "no data yet")
+                .font(.caption2)
+                .foregroundStyle(.orange)
         }
     }
 }
 
-struct WindowLine: View {
+/// Today's day hours as a strip, the clock unrolled: the going-out line on top, the hours
+/// coloured by heat with their flames and clouds, the pool line under, past hours faded.
+struct DayStrip: View {
     let s: Snapshot
 
     var body: some View {
-        if let line = s.windowLine, let w = s.window {
-            HStack(spacing: 5) {
-                Circle().fill(w.level.color).frame(width: 7, height: 7)
-                Text(line).font(.caption.weight(.medium)).lineLimit(1).minimumScaleFactor(0.8)
-            }
-        } else if s.noWindow {
-            Text("No good time in the next days").font(.caption).foregroundStyle(.secondary).lineLimit(2)
-        }
-    }
-}
-
-struct Footer: View {
-    let s: Snapshot
-
-    var body: some View {
-        HStack(spacing: 4) {
-            if let f = s.feels { Text(f) }
-            Spacer(minLength: 0)
-            if s.stale, let u = s.updated {
-                Text("as of \(u.formatted(.dateTime.hour().minute()))").foregroundStyle(.orange)
-            } else if s.stale {
-                Text("no data yet").foregroundStyle(.orange)
-            }
-        }
-        .font(.caption2)
-        .foregroundStyle(.secondary)
-    }
-}
-
-/// Today's hours as a strip of colours, like the page's clock unrolled; past hours fade.
-struct DayBar: View {
-    let s: Snapshot
-
-    var body: some View {
-        VStack(spacing: 3) {
-            GeometryReader { g in
-                let n = max(s.today.count, 1)
-                let w = g.size.width / CGFloat(n)
-                ZStack(alignment: .topLeading) {
-                    HStack(spacing: 1) {
-                        ForEach(s.today, id: \.time) { h in
-                            VStack(spacing: 1) {
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(h.verdict.color)
-                                if s.settings.pool {
-                                    RoundedRectangle(cornerRadius: 1)
-                                        .fill(h.pool == .good ? Color(red: 0x40 / 255, green: 0xc4 / 255, blue: 1) :
-                                              h.pool == .ok ? Color(red: 0x9b / 255, green: 0xdc / 255, blue: 1) : .clear)
-                                        .frame(height: 3)
-                                }
+        HStack(alignment: .top, spacing: 2) {
+            ForEach(s.today, id: \.time) { h in
+                VStack(spacing: 2) {
+                    Capsule().fill(s.outLevel(h)?.color ?? .clear).frame(height: 4)
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Palette.heat(h))
+                        .overlay(HourMarks(h: h, size: 9))
+                        .overlay {
+                            if h.hour == s.nowHour {
+                                RoundedRectangle(cornerRadius: 3).strokeBorder(Color.primary, lineWidth: 2)
                             }
-                            .opacity(h.hour < s.nowHour ? 0.35 : 1)
                         }
-                    }
-                    if let i = s.today.firstIndex(where: { $0.hour == s.nowHour }) {
-                        RoundedRectangle(cornerRadius: 1)
-                            .fill(Color.primary)
-                            .frame(width: 2, height: g.size.height + 4)
-                            .offset(x: w * CGFloat(i) + w / 2 - 1, y: -2)
-                    }
+                        .frame(height: 26)
+                    Capsule()
+                        .fill(s.poolLevel(h) == .good ? Palette.pool.good : s.poolLevel(h) == .ok ? Palette.pool.ok : .clear)
+                        .frame(height: 3)
+                    Text(h.hour % 3 == 0 ? String(format: "%02d", h.hour) : " ")
+                        .font(.system(size: 9).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
                 }
+                .opacity(h.hour < s.nowHour && s.phase != .beforeDay ? 0.4 : 1)
             }
-            .frame(height: 22)
-            HStack {
-                ForEach(ticks, id: \.self) { h in
-                    Text(String(format: "%02d", h)).frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .font(.system(size: 9).monospacedDigit())
-            .foregroundStyle(.secondary)
         }
-    }
-
-    private var ticks: [Int] {
-        guard let first = s.today.first?.hour, let last = s.today.last?.hour else { return [] }
-        let step = max(1, (last - first + 1) / 4)
-        return Array(stride(from: first, through: last, by: step)).prefix(5).map { $0 }
     }
 }
 
-/// Today as a ring, like the page's clock: midnight at the top, noon at the bottom, one segment
-/// per hour coloured by its verdict, past hours and hours outside the day faded, pool time as
-/// a thin inner arc, a dot on now. The verdict sits in the middle.
+/// Today as a ring, like the page's clock: midnight at the top, noon at the bottom; the
+/// going-out arc outside, the pool arc inside, flames and clouds on the hours, a dot on now.
 struct DayRing: View {
     let s: Snapshot
 
     var body: some View {
         GeometryReader { g in
             let d = min(g.size.width, g.size.height)
-            let line = d * 0.1
+            let outW = d * 0.035, t = d * 0.13, poolW = d * 0.03, gap = d * 0.025
+            let rOut = d / 2 - outW / 2
+            let rRing = d / 2 - outW - gap - t / 2
+            let rPool = rRing - t / 2 - gap - poolW / 2
             ZStack {
                 ForEach(s.wholeDay, id: \.time) { h in
-                    segment(h.hour, gap: 0.004)
-                        .stroke(h.verdict.color, style: StrokeStyle(lineWidth: line, lineCap: .butt))
-                        .opacity(!s.inDay(h) ? 0.15 : h.hour < s.nowHour ? 0.4 : 1)
-                        .padding(line / 2) // the stroke straddles the edge
-                }
-                if s.settings.pool {
-                    ForEach(s.wholeDay.filter { s.inDay($0) && ($0.pool == .good || $0.pool == .ok) }, id: \.time) { h in
-                        segment(h.hour, gap: 0)
-                            .stroke(Color(red: 0x40 / 255, green: 0xc4 / 255, blue: 1).opacity(h.pool == .good ? 1 : 0.5),
-                                    style: StrokeStyle(lineWidth: line * 0.25))
-                            .padding(line * 1.45)
+                    let fade = !s.inDay(h) ? 0.15 : h.hour < s.nowHour ? 0.4 : 1
+                    arc(h.hour, rRing, t, gap: 0.004).stroke(Palette.heat(h), lineWidth: t)
+                        .frame(width: 2 * rRing, height: 2 * rRing).opacity(fade)
+                    if let o = s.outLevel(h) {
+                        arc(h.hour, rOut, outW, gap: 0).stroke(o.color, style: StrokeStyle(lineWidth: outW, lineCap: .round))
+                            .frame(width: 2 * rOut, height: 2 * rOut).opacity(fade)
+                    }
+                    if let p = s.poolLevel(h) {
+                        arc(h.hour, rPool, poolW, gap: 0).stroke(p == .good ? Palette.pool.good : Palette.pool.ok, lineWidth: poolW)
+                            .frame(width: 2 * rPool, height: 2 * rPool).opacity(fade)
+                    }
+                    if s.inDay(h), h.strongSun == true || h.badAir != nil {
+                        HourMarks(h: h, size: t * 0.42).offset(at(h.hour, rRing)).opacity(fade)
                     }
                 }
                 if s.wholeDay.contains(where: { $0.hour == s.nowHour }) {
-                    let a = Angle.degrees((Double(s.nowHour) + 0.5) / 24 * 360 - 90)
-                    let r = (d - line) / 2
                     Circle()
-                        .fill(Color.primary)
-                        .overlay(Circle().stroke(Color(.systemBackground), lineWidth: 1.5))
-                        .frame(width: line * 0.75, height: line * 0.75)
-                        .offset(x: r * cos(a.radians), y: r * sin(a.radians))
+                        .fill(Color.white)
+                        .overlay(Circle().stroke(Color.black.opacity(0.6), lineWidth: 1.5))
+                        .frame(width: t * 0.6, height: t * 0.6)
+                        .offset(at(s.nowHour, rRing))
                 }
                 VStack(spacing: 1) {
                     Text(s.status)
-                        .font(.system(size: d * 0.17, weight: .bold, design: .rounded))
+                        .font(.system(size: d * 0.16, weight: .bold, design: .rounded))
                         .foregroundStyle(s.statusLevel == .na ? Color.primary : s.statusLevel.color)
                         .minimumScaleFactor(0.4)
                         .lineLimit(1)
                     if !s.ringLine.isEmpty {
-                        Text(s.ringLine).font(.system(size: d * 0.095, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
-                    }
-                    if let f = s.now?.feels, s.phase == .inDay {
-                        Text("\(Int(f.rounded()))°").font(.system(size: d * 0.085)).foregroundStyle(.secondary)
+                        Text(s.ringLine).font(.system(size: d * 0.09, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
                     }
                 }
-                .frame(width: d * 0.6) // the circle narrows away from its middle: keep text clear of the ring
+                .frame(width: 2 * rPool * 0.78)
             }
             .frame(width: d, height: d)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
-    private func segment(_ hour: Int, gap: Double) -> some Shape {
-        Circle()
-            .trim(from: Double(hour) / 24 + gap, to: Double(hour + 1) / 24 - gap)
-            .rotation(.degrees(-90))
+    private func arc(_ hour: Int, _ r: CGFloat, _ w: CGFloat, gap: Double) -> some Shape {
+        Circle().trim(from: Double(hour) / 24 + gap, to: Double(hour + 1) / 24 - gap).rotation(.degrees(-90))
+    }
+
+    private func at(_ hour: Int, _ r: CGFloat) -> CGSize {
+        let a = ((Double(hour) + 0.5) / 24 * 360 - 90) * .pi / 180
+        return CGSize(width: r * cos(a), height: r * sin(a))
     }
 }
 
@@ -197,7 +176,7 @@ struct SmallFace: View {
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             DayRing(s: s)
-            if s.stale { Footer(s: s).fixedSize() }
+            Stale(s: s)
         }
     }
 }
@@ -206,37 +185,29 @@ struct MediumFace: View {
     let s: Snapshot
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top) {
-                StatusBlock(s: s)
-                Spacer(minLength: 8)
-                VStack(alignment: .trailing, spacing: 2) {
-                    if let n = s.now {
-                        if let t = n.temp { Text("\(Int(t.rounded()))°").font(.title3.weight(.semibold)) }
-                        Text(facts(n)).font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
-                    }
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Circle().fill(s.statusLevel.color).frame(width: 11, height: 11)
+                Text(s.status).font(.system(size: 24, weight: .bold, design: .rounded)).lineLimit(1)
+                Spacer(minLength: 4)
+                if let f = s.now?.feels, s.phase == .inDay {
+                    Text("feels").font(.caption2).foregroundStyle(.secondary)
+                    Text("\(Int(f.rounded()))°").font(.system(size: 24, weight: .semibold, design: .rounded))
                 }
             }
-            DayBar(s: s)
             HStack {
-                WindowLine(s: s)
+                Text(s.subline).font(.subheadline.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
                 Spacer(minLength: 4)
-                if s.stale { Footer(s: s).fixedSize() }
+                Stale(s: s)
             }
+            Spacer(minLength: 0)
+            DayStrip(s: s)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
-
-    private func facts(_ n: FeedHour) -> String {
-        var f: [String] = []
-        if let v = n.feels { f.append("feels \(Int(v.rounded()))°") }
-        if !n.night, let uv = n.uvIndex { f.append("UV \(Int(uv.rounded()))") }
-        if let a = n.airIndex { f.append("air \(Int(a.rounded()))") }
-        return f.joined(separator: " · ")
-    }
 }
 
-/// Lock screen, rectangular: two lines.
+/// Lock screen, rectangular: the verdict, and the one line under it.
 struct RectangularFace: View {
     let s: Snapshot
 
@@ -244,10 +215,9 @@ struct RectangularFace: View {
         VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 4) {
                 Image(systemName: s.statusLevel.symbol).font(.caption.weight(.bold))
-                Text(s.detail.isEmpty ? s.status : "\(s.status), \(s.detail)").font(.headline).lineLimit(1)
+                Text(s.status).font(.headline).lineLimit(1)
             }
-            if let line = s.windowLine { Text(line).font(.caption).lineLimit(1) }
-            else if let f = s.feels { Text(f).font(.caption) }
+            Text(s.subline).font(.caption).lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

@@ -13,7 +13,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { addDays, dubaiNowHour, dubaiToday, fetchOutdoorMeasured } from '../src/lib/api.ts';
-import { NORMAL, SENSITIVE, enrich, reasons, summarizeDays, type Hour, type Thresholds } from '../src/lib/index.ts';
+import { heatRGB } from '../src/lib/heat.ts';
+import { NORMAL, SENSITIVE, enrich, reasons, summarizeDays, type Hour, type Level, type Thresholds } from '../src/lib/index.ts';
 
 const out = process.argv[2];
 if (!out) throw new Error('usage: widget_feed.mts <output.json>');
@@ -35,6 +36,11 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
 // Dubai has no daylight saving: every wall-clock hour is +04:00
 const at = (time: string) => `${time}+04:00`;
 const r = (v: number | null | undefined, d = 0) => (v == null ? null : Math.round(v * 10 ** d) / 10 ** d);
+const hex = (c: number[]) => `#${c.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+// as the clock draws it: bad air is dust when dust is at least as bad as the pollution
+const RANK: Record<Level, number> = { good: 0, na: 0, ok: 1, bad: 2 };
+const badAir = (h: Hour) =>
+  h.air !== 'bad' ? null : RANK[h.dustLevel] >= RANK[h.chemLevel] && h.dustLevel !== 'good' ? 'dust' : 'smog';
 
 const today = dubaiToday();
 const last = addDays(today, DAYS - 1);
@@ -62,6 +68,10 @@ function profile(th: Thresholds) {
       dust: h.dustIdx,
       airSource: h.airSrc === 'station' ? 'measured' : h.adai == null ? 'none' : 'forecast',
       reason: reasons(h),
+      // what the clock draws: the ring's colour, flames, and violet gas or sandy haze
+      heatColor: h.heatFeels == null ? null : hex(heatRGB(h.heatFeels, th)),
+      strongSun: !h.night && h.uvLevel === 'bad',
+      badAir: badAir(h),
     })),
     days: summarizeDays(hours).map((d) => ({
       day: d.day,

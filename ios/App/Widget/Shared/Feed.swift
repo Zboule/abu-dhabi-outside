@@ -24,6 +24,10 @@ struct FeedHour: Codable, Equatable {
     let dust: Double?
     let airSource: String
     let reason: String
+    // what the page's clock draws (optional: a feed cached before they existed has none)
+    let heatColor: String?
+    let strongSun: Bool?
+    let badAir: String? // "smog" or "dust" when the air is over the limit
 
     var day: String { String(time.prefix(10)) }
     var hour: Int { Int(time.dropFirst(11).prefix(2)) ?? 0 }
@@ -189,13 +193,34 @@ struct Snapshot {
 
     var noWindow: Bool { window == nil }
 
-    /// The ring's second line: how long it lasts, or when it turns OK ("OK 18:00", "Tmrw 07:00").
+    /// The one line under the verdict: how long it lasts, or the next window.
+    var subline: String {
+        guard let w = window else { return phase == .inDay ? "No good time soon" : "" }
+        if inWindow { return "until \(until(w.to))" }
+        let word = w.level == .good ? "Good" : "OK"
+        let when = windowDay.isEmpty ? "" : windowDay == "Tomorrow" ? "Tmrw " : "\(windowDay.prefix(3)) "
+        return "\(when)\(word) \(w.text)"
+    }
+
+    /// The ring's second line, shorter: when it turns OK ("OK 18:00", "Tmrw 07:00").
     var ringLine: String {
         guard let w = window else { return "" }
         if inWindow { return "until \(until(w.to))" }
         let word = w.level == .good ? "Good" : "OK"
         if windowDay.isEmpty { return "\(word) \(hh(w.from))" }
         return windowDay == "Tomorrow" ? "Tmrw \(hh(w.from))" : "\(windowDay.prefix(3)) \(hh(w.from))"
+    }
+
+    /// The going-out line over an hour, as the clock's outer arc: good, OK, or none.
+    func outLevel(_ h: FeedHour) -> Level? {
+        guard inDay(h), h.verdict == .good || h.verdict == .ok else { return nil }
+        return h.verdict
+    }
+
+    /// The pool line under an hour (only with pool time on).
+    func poolLevel(_ h: FeedHour) -> Level? {
+        guard settings.pool, inDay(h), h.pool == .good || h.pool == .ok else { return nil }
+        return h.pool
     }
 
     func inDay(_ h: FeedHour) -> Bool { settings.dayFrom <= h.hour && h.hour <= settings.dayTo }
