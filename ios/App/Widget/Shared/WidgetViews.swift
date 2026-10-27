@@ -21,6 +21,23 @@ enum Palette {
     static let noData = Color(hex: "#3c3c43")
 
     static func heat(_ h: FeedHour) -> Color { h.heatColor.map(Color.init(hex:)) ?? noData }
+
+    /// The heat colour sunk toward the night: the clock's slate in dark mode, a soft grey on a
+    /// light widget (a dark slate would weigh on it). `sink` 0 is the colour, 1 the night.
+    static func heat(_ h: FeedHour, sink: Double, dark: Bool) -> Color {
+        guard sink > 0, let hex = h.heatColor, let v = UInt64(hex.dropFirst(), radix: 16) else { return heat(h) }
+        let c = [Double((v >> 16) & 0xff), Double((v >> 8) & 0xff), Double(v & 0xff)]
+        let night: [Double] = dark ? [34, 37, 50] : [222, 223, 228]
+        // on a light widget a half-sunk red reads as a cooler pink: sink further, toward grey
+        let k = dark ? sink : min(1, sink * 1.35)
+        let m = zip(c, night).map { ($0 + ($1 - $0) * k) / 255 }
+        return Color(red: m[0], green: m[1], blue: m[2])
+    }
+
+    /// How far an hour sinks: outside the day hours like the night, today's past a little less.
+    static let sinkNight = 0.74, sinkPast = 0.55
+    /// Effects (fire, particles) and lines of sunk hours
+    static let fadeNight = 0.2, fadePast = 0.35
     static func air(_ kind: String?) -> Color? { kind == "dust" ? dust : kind == "smog" ? smog : nil }
 }
 
@@ -173,18 +190,20 @@ struct HazardBlock: View {
 struct StripRun: Identifiable {
     let hours: [FeedHour]
     let hazard: Hazard?
+    var past = false
     var id: String { hours[0].time }
     var first: Int { hours[0].hour }
 }
 
-func stripRuns(_ hours: [FeedHour]) -> [StripRun] {
+/// A run breaks where the hazard changes, and at now (the past sinks, the rest doesn't).
+func stripRuns(_ hours: [FeedHour], now: Int) -> [StripRun] {
     var runs: [StripRun] = []
     for h in hours {
-        let z = Hazard(h)
-        if let z, let last = runs.last, last.hazard == z, last.hours.last!.hour + 1 == h.hour {
-            runs[runs.count - 1] = StripRun(hours: last.hours + [h], hazard: z)
+        let z = Hazard(h), past = h.hour < now
+        if let z, let last = runs.last, last.hazard == z, last.past == past, last.hours.last!.hour + 1 == h.hour {
+            runs[runs.count - 1] = StripRun(hours: last.hours + [h], hazard: z, past: past)
         } else {
-            runs.append(StripRun(hours: [h], hazard: z))
+            runs.append(StripRun(hours: [h], hazard: z, past: past))
         }
     }
     return runs
@@ -203,10 +222,11 @@ struct Stale: View {
 }
 
 /// Today's day hours as a strip, the clock unrolled: the going-out line on top, the hours
-/// coloured by heat, or by their hazard, the pool line under, now outlined. Past hours
-/// keep their colour, as on the clock (faded, a red hour reads as a cooler pink one).
+/// coloured by heat, or by their hazard, the pool line under, now outlined. Hours already gone
+/// sink toward the night, as on the clock (sunk, not faded: a faded red reads as a cooler pink).
 struct DayStrip: View {
     let s: Snapshot
+    @Environment(\.colorScheme) private var scheme
     private let gap: CGFloat = 2
 
     var body: some View {
@@ -214,6 +234,7 @@ struct DayStrip: View {
             HStack(spacing: gap) {
                 ForEach(s.today, id: \.time) { h in
                     Capsule().fill(s.outLevel(h)?.color ?? .clear).frame(height: 4)
+                        .opacity(h.hour < s.nowHour ? Palette.fadePast : 1)
                 }
             }
             GeometryReader { g in
@@ -222,12 +243,14 @@ struct DayStrip: View {
                 let width = { (k: Int) in col * CGFloat(k) + gap * CGFloat(k - 1) }
                 ZStack(alignment: .topLeading) {
                     HStack(spacing: gap) {
-                        ForEach(stripRuns(s.today)) { run in
+                        ForEach(stripRuns(s.today, now: s.nowHour)) { run in
                             if let z = run.hazard {
                                 // no block: the fire or the gas is the hour
                                 HazardBlock(hazard: z, seed: run.first).frame(width: width(run.hours.count))
+                                    .opacity(run.past ? Palette.fadePast : 1)
                             } else {
-                                Palette.heat(run.hours[0]).frame(width: width(run.hours.count))
+                                Palette.heat(run.hours[0], sink: run.past ? Palette.sinkPast : 0, dark: scheme == .dark)
+                                    .frame(width: width(run.hours.count))
                                     .clipShape(RoundedRectangle(cornerRadius: 3))
                             }
                         }
@@ -247,6 +270,7 @@ struct DayStrip: View {
                         Capsule()
                             .fill(s.poolLevel(h) == .good ? Palette.pool.good : s.poolLevel(h) == .ok ? Palette.pool.ok : .clear)
                             .frame(height: 3)
+                            .opacity(h.hour < s.nowHour ? Palette.fadePast : 1)
                         Text(h.hour % 3 == 0 ? String(format: "%02d", h.hour) : " ")
                             .font(.system(size: 10, weight: .medium).monospacedDigit())
                             .foregroundStyle(.secondary)
@@ -260,9 +284,11 @@ struct DayStrip: View {
 }
 
 /// Today as a ring, like the page's clock: midnight at the top, noon at the bottom; the
-/// going-out arc outside, the pool arc inside, hazard hours striped or tinted, a dot on now.
+/// going-out arc outside, the pool arc inside, hazard hours as fire or particles, a dot on now.
+/// Hours outside the day sink like the night, today's past a little less.
 struct DayRing: View {
     let s: Snapshot
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         GeometryReader { g in
@@ -273,8 +299,10 @@ struct DayRing: View {
             let rPool = rRing - t / 2 - gap - poolW / 2
             ZStack {
                 ForEach(s.wholeDay, id: \.time) { h in
-                    let fade = s.inDay(h) ? 1.0 : 0.15
-                    ringHour(h, rRing, t).frame(width: d, height: d).opacity(fade)
+                    let past = h.hour < s.nowHour
+                    let sink = !s.inDay(h) ? Palette.sinkNight : past ? Palette.sinkPast : 0
+                    let fade = !s.inDay(h) ? Palette.fadeNight : past ? Palette.fadePast : 1
+                    ringHour(h, rRing, t, sink: sink, fade: fade).frame(width: d, height: d)
                     if let o = s.outLevel(h) {
                         arc(h.hour, rOut, outW, gap: 0).stroke(o.color, style: StrokeStyle(lineWidth: outW, lineCap: .round))
                             .frame(width: 2 * rOut, height: 2 * rOut).opacity(fade)
@@ -313,7 +341,7 @@ struct DayRing: View {
     /// or the air hurts lungs, no ring at all: fire burning through the band and out, or gas
     /// filling it.
     @ViewBuilder
-    private func ringHour(_ h: FeedHour, _ r: CGFloat, _ t: CGFloat) -> some View {
+    private func ringHour(_ h: FeedHour, _ r: CGFloat, _ t: CGFloat, sink: Double, fade: Double) -> some View {
         if let z = Hazard(h) {
             ZStack {
                 Canvas { ctx, size in
@@ -346,8 +374,10 @@ struct DayRing: View {
                     }
                 }
             }
+            .opacity(fade)
         } else {
-            arc(h.hour, r, t, gap: 0.004).stroke(Palette.heat(h), lineWidth: t).frame(width: 2 * r, height: 2 * r)
+            arc(h.hour, r, t, gap: 0.004).stroke(Palette.heat(h, sink: sink, dark: scheme == .dark), lineWidth: t)
+                .frame(width: 2 * r, height: 2 * r)
         }
     }
 
