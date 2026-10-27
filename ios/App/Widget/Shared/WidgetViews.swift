@@ -89,46 +89,43 @@ func flameTongue(_ ctx: inout GraphicsContext, base l: CGPoint, _ r: CGPoint, ti
     p.closeSubpath()
     let mid = CGPoint(x: (l.x + r.x) / 2, y: (l.y + r.y) / 2)
     ctx.fill(p, with: .linearGradient(Gradient(stops: [
-        .init(color: Color(red: 1, green: 236 / 255, blue: 170 / 255).opacity(0.85 * q), location: 0),
-        .init(color: Color(red: 1, green: 170 / 255, blue: 50 / 255).opacity(0.7 * q), location: 0.3),
-        .init(color: Color(red: 1, green: 80 / 255, blue: 10 / 255).opacity(0.4 * q), location: 0.7),
+        .init(color: Color(red: 1, green: 200 / 255, blue: 60 / 255).opacity(min(1, 0.95 * q)), location: 0),
+        .init(color: Color(red: 1, green: 130 / 255, blue: 20 / 255).opacity(min(1, 0.85 * q)), location: 0.3),
+        .init(color: Color(red: 230 / 255, green: 50 / 255, blue: 0).opacity(min(1, 0.55 * q)), location: 0.7),
         .init(color: Color(red: 200 / 255, green: 20 / 255, blue: 0).opacity(0), location: 1),
     ]), startPoint: mid, endPoint: tip))
 }
 
-/// Skin-burning sun, the clock's flames frozen: tongues rising from a glowing ember base, sparks over them.
+/// Skin-burning sun, the clock's flames frozen: no block, just fire rising from the baseline
+/// (normal blending, so it burns on a light widget too), sparks over it.
 struct BurnFill: View {
     var body: some View {
         Canvas { ctx, size in
             let w = size.width, h = size.height
-            ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .linearGradient(
-                Gradient(colors: [Color(hex: "#1c0400"), Color(hex: "#5c1000"), Color(hex: "#a32200")]),
-                startPoint: .zero, endPoint: CGPoint(x: 0, y: h)))
-            ctx.blendMode = .plusLighter
-            // heat glow at the root
-            ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .radialGradient(
-                Gradient(colors: [Color(red: 1, green: 0.47, blue: 0.08).opacity(0.55), .clear]),
-                center: CGPoint(x: w / 2, y: h * 1.05), startRadius: 0, endRadius: max(w, h) * 0.9))
-            var x = -2.0
-            var i = 0.0
-            while x < w + 2 {
-                let n = flicker(i * 0.9), n2 = flicker(i * 0.37 + 10, 1.2)
-                let hgt = h * (0.45 + 0.5 * n)
-                let half = 2.6 + 1.2 * n2
-                let sway = (n2 - 0.5) * 6
-                let tip = CGPoint(x: x + sway, y: h - hgt)
-                flameTongue(&ctx, base: CGPoint(x: x - half, y: h + 1), CGPoint(x: x + half, y: h + 1), tip: tip,
-                            c1: CGPoint(x: x - half * 0.9 + sway * 0.3, y: h - hgt * 0.45),
-                            c2: CGPoint(x: x + half * 0.9 + sway * 0.3, y: h - hgt * 0.45), q: 1)
-                x += 2.4
-                i += 1
+            // embers along the root
+            ctx.fill(Path(CGRect(x: 0, y: h * 0.55, width: w, height: h * 0.45)), with: .linearGradient(
+                Gradient(colors: [Color(red: 1, green: 0.35, blue: 0).opacity(0), Color(red: 1, green: 0.3, blue: 0).opacity(0.55)]),
+                startPoint: CGPoint(x: 0, y: h * 0.55), endPoint: CGPoint(x: 0, y: h)))
+            for layer in 0..<2 {
+                var x = layer == 0 ? -1.0 : 0.2
+                var i = Double(layer) * 50
+                while x < w + 1 {
+                    let n = flicker(i * 0.9), n2 = flicker(i * 0.37 + 10, 1.2)
+                    let hgt = h * (layer == 0 ? 0.55 + 0.45 * n : 0.3 + 0.35 * n)
+                    let half = layer == 0 ? 2.4 + 1.2 * n2 : 1.5 + 0.8 * n2
+                    let sway = (n2 - 0.5) * 5
+                    flameTongue(&ctx, base: CGPoint(x: x - half, y: h + 1), CGPoint(x: x + half, y: h + 1), tip: CGPoint(x: x + sway, y: h - hgt),
+                                c1: CGPoint(x: x - half * 0.9 + sway * 0.3, y: h - hgt * 0.45),
+                                c2: CGPoint(x: x + half * 0.9 + sway * 0.3, y: h - hgt * 0.45), q: layer == 0 ? 1 : 1.15)
+                    x += layer == 0 ? 3.2 : 4.1
+                    i += 1
+                }
             }
-            // sparks rising out of the flames
             var rng = Scatter(Int(w * 7 + h))
-            for _ in 0..<max(3, Int(w / 6)) {
-                let sx = rng.next() * w, sy = rng.next() * h * 0.45
-                ctx.fill(Path(ellipseIn: CGRect(x: sx, y: sy, width: 1.6, height: 1.6)),
-                         with: .color(Color(red: 1, green: 210 / 255, blue: 120 / 255).opacity(0.5 + 0.5 * Double(rng.next()))))
+            for _ in 0..<max(3, Int(w / 5)) {
+                let sx = rng.next() * w, sy = rng.next() * h * 0.5
+                ctx.fill(Path(ellipseIn: CGRect(x: sx, y: sy, width: 1.7, height: 1.7)),
+                         with: .color(Color(red: 1, green: 0.55, blue: 0.1).opacity(0.6 + 0.4 * Double(rng.next()))))
             }
         }
     }
@@ -148,7 +145,7 @@ func gasPuff(_ ctx: inout GraphicsContext, at c: CGPoint, radius r: CGFloat, col
         center: c, startRadius: 0, endRadius: r))
 }
 
-/// Lung-wrecking air, the clock's gas frozen: violet smog or sandy haze billowing over a dark base.
+/// Lung-wrecking air, the clock's gas frozen: no block, just violet smog or sandy haze billowing.
 struct AirFill: View {
     let dust: Bool
     let seed: Int
@@ -156,18 +153,14 @@ struct AirFill: View {
     var body: some View {
         Canvas { ctx, size in
             let w = size.width, h = size.height
-            ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .linearGradient(
-                Gradient(colors: dust ? [Color(hex: "#2e1d0c"), Color(hex: "#160d04")] : [Color(hex: "#24104a"), Color(hex: "#0e0520")]),
-                startPoint: .zero, endPoint: CGPoint(x: 0, y: h)))
-            ctx.blendMode = .plusLighter
             var rng = Scatter(seed + (dust ? 100 : 0))
-            // big slow haze, then smaller brighter wisps over it
+            // big slow haze, then smaller denser wisps over it
             for layer in 0..<2 {
-                let count = layer == 0 ? max(4, Int(w * h / 90)) : max(6, Int(w * h / 45))
+                let count = layer == 0 ? max(5, Int(w * h / 70)) : max(8, Int(w * h / 35))
                 for _ in 0..<count {
-                    let r = (layer == 0 ? 0.5 + rng.next() * 0.4 : 0.22 + rng.next() * 0.3) * min(w, h * 0.8) + 3
-                    gasPuff(&ctx, at: CGPoint(x: rng.next() * w, y: rng.next() * h), radius: r,
-                            color: gasColor(dust: dust, light: rng.next() > 0.5), alpha: layer == 0 ? 0.35 : 0.55)
+                    let r = (layer == 0 ? 0.45 + rng.next() * 0.35 : 0.2 + rng.next() * 0.25) * min(w * 1.2, h) + 2
+                    let c = CGPoint(x: rng.next() * w, y: h * 0.12 + rng.next() * h * 0.8)
+                    gasPuff(&ctx, at: c, radius: r, color: gasColor(dust: dust, light: rng.next() > 0.5), alpha: layer == 0 ? 0.55 : 0.75)
                 }
             }
         }
@@ -269,11 +262,13 @@ struct DayStrip: View {
                 ZStack(alignment: .topLeading) {
                     HStack(spacing: gap) {
                         ForEach(stripRuns(s.today)) { run in
-                            Group {
-                                if let z = run.hazard { HazardBlock(hazard: z, seed: run.first) } else { Palette.heat(run.hours[0]) }
+                            if let z = run.hazard {
+                                // no block: the fire or the gas is the hour
+                                HazardBlock(hazard: z, seed: run.first).frame(width: width(run.hours.count))
+                            } else {
+                                Palette.heat(run.hours[0]).frame(width: width(run.hours.count))
+                                    .clipShape(RoundedRectangle(cornerRadius: 3))
                             }
-                            .frame(width: width(run.hours.count))
-                            .clipShape(RoundedRectangle(cornerRadius: 3))
                         }
                     }
                     if let i = s.today.firstIndex(where: { $0.hour == s.nowHour }) {
@@ -353,45 +348,43 @@ struct DayRing: View {
         }
     }
 
-    /// One hour of the ring, as the clock draws it: its heat colour, flames licking out of the
-    /// ring where the sun burns, violet gas or sandy haze spilling over it where the air is bad.
+    /// One hour of the ring, as the clock draws it: its heat colour, or, where the sun burns skin
+    /// or the air hurts lungs, no ring at all: fire burning through the band and out, or gas
+    /// filling it.
     @ViewBuilder
     private func ringHour(_ h: FeedHour, _ r: CGFloat, _ t: CGFloat) -> some View {
-        let seg = arc(h.hour, r, t, gap: 0.004)
-        let z = Hazard(h)
-        ZStack {
-            seg.stroke(z?.air == .smog ? Color(hex: "#3a1a78") : z?.air == .dust ? Color(hex: "#5a3c1c") : Palette.heat(h), lineWidth: t)
-                .frame(width: 2 * r, height: 2 * r)
-            if let z {
+        if let z = Hazard(h) {
+            ZStack {
                 Canvas { ctx, size in
                     let c = CGPoint(x: size.width / 2, y: size.height / 2)
                     let pt = { (rad: CGFloat, a: Double) in CGPoint(x: c.x + rad * cos(a), y: c.y + rad * sin(a)) }
                     let a0 = Double(h.hour) / 24 * 2 * .pi - .pi / 2
                     let span = 2 * Double.pi / 24
-                    ctx.blendMode = .plusLighter
-                    if z.sun {
-                        for k in 0..<5 {
-                            let a = a0 + span * (Double(k) + 0.5) / 5
-                            let n = flicker(Double(h.hour * 5 + k) * 0.6)
-                            let hgt = t * (0.35 + 0.55 * n), half = span / 12
-                            let b0 = r + t / 2 - 2
-                            flameTongue(&ctx, base: pt(b0, a - half), pt(b0, a + half), tip: pt(r + t / 2 + hgt, a + (n - 0.5) * 0.04),
-                                        c1: pt(r + t / 2 + hgt * 0.45, a - half * 0.9), c2: pt(r + t / 2 + hgt * 0.45, a + half * 0.9), q: 1)
-                        }
-                    }
                     if let air = z.air {
                         var rng = Scatter(h.hour)
-                        for _ in 0..<7 {
+                        for _ in 0..<10 {
                             let a = a0 + span * Double(rng.next())
-                            let rad = r - t * 0.2 - rng.next() * t * 0.9
-                            gasPuff(&ctx, at: pt(rad, a), radius: t * (0.35 + rng.next() * 0.35),
-                                    color: gasColor(dust: air == .dust, light: rng.next() > 0.5), alpha: 0.6)
+                            let rad = r + (rng.next() - 0.5) * t
+                            gasPuff(&ctx, at: pt(rad, a), radius: t * (0.4 + rng.next() * 0.35),
+                                    color: gasColor(dust: air == .dust, light: rng.next() > 0.5), alpha: 0.7)
+                        }
+                    }
+                    if z.sun {
+                        for k in 0..<6 {
+                            let a = a0 + span * (Double(k) + 0.5) / 6
+                            let n = flicker(Double(h.hour * 6 + k) * 0.6)
+                            let hgt = t * (0.9 + 0.9 * n), half = span / 12
+                            let b0 = r - t / 2
+                            flameTongue(&ctx, base: pt(b0, a - half), pt(b0, a + half), tip: pt(b0 + hgt, a + (n - 0.5) * 0.05),
+                                        c1: pt(b0 + hgt * 0.45, a - half * 0.9), c2: pt(b0 + hgt * 0.45, a + half * 0.9), q: 1)
                         }
                     }
                 }
                 HazardMark(symbol: z.air == nil ? HazardMark.burn : HazardMark.lungs, size: t * 0.45)
                     .offset(at(h.hour, r))
             }
+        } else {
+            arc(h.hour, r, t, gap: 0.004).stroke(Palette.heat(h), lineWidth: t).frame(width: 2 * r, height: 2 * r)
         }
     }
 

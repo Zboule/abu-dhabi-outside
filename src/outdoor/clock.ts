@@ -179,6 +179,10 @@ export function mountClock(
     return a + (b - a) * f;
   }
 
+  // how much an angle is a hazard hour (sun burning skin, or air hurting lungs), 0..1
+  const uvK = d => Math.min(1, at(sig.uv, d, FX_HOLD) / 0.6);
+  const hazardAt = d => Math.max(uvK(d), at(sig.air, d, FX_HOLD));
+
   // ---------- canvas ----------
   const cv = $("cv"), ctx = cv.getContext("2d");
   let S, DPR, CX, R_OUT, R_IN, R_MID, ringLayer;
@@ -205,19 +209,28 @@ export function mountClock(
     const step = 0.5;
     for (let d = 0; d < 360; d += step) {
       const c = heatRGB(at(sig.feels, d + step / 2, HEAT_HOLD), DATA.heat);
+      // hours to avoid whatever the heat have no ring: the fire or the gas is the ring there
+      // (drawBandFire, drawBandGas), the temperature doesn't matter
+      const haz = hazardAt(d + step / 2);
+      if (haz > 0.98) continue;
       const nt = at(sig.night, d + step / 2);
       g.beginPath();
       g.arc(CX, CX, R_OUT, ang(d), ang(d + step + 0.25));
       g.arc(CX, CX, R_IN, ang(d + step + 0.25), ang(d), true);
       g.closePath();
       // night: sink the colour into a cool slate so it never reads as play time
-      g.fillStyle = rgb(c.map((v, k) => v + ([34, 37, 50][k] - v) * 0.74 * nt));
+      g.fillStyle = rgb(c.map((v, k) => v + ([34, 37, 50][k] - v) * 0.74 * nt), 1 - haz);
       g.fill();
     }
     // depth: darker inner edge, soft highlight on the outer edge
     const sh = g.createRadialGradient(CX, CX, R_IN, CX, CX, R_OUT);
     sh.addColorStop(0, "rgba(0,0,0,.35)"); sh.addColorStop(.45, "rgba(0,0,0,0)"); sh.addColorStop(.9, "rgba(255,255,255,.06)"); sh.addColorStop(1, "rgba(255,255,255,0)");
+    g.save();
+    g.beginPath();
+    for (let d = 0; d < 360; d += step) if (hazardAt(d + step / 2) < 0.5) { g.moveTo(CX + R_OUT * Math.cos(ang(d)), CX + R_OUT * Math.sin(ang(d))); g.arc(CX, CX, R_OUT, ang(d), ang(d + step + 0.25)); g.arc(CX, CX, R_IN, ang(d + step + 0.25), ang(d), true); g.closePath(); }
+    g.clip();
     g.beginPath(); g.arc(CX, CX, R_OUT, 0, TAU); g.arc(CX, CX, R_IN, TAU, 0, true); g.fillStyle = sh; g.fill();
+    g.restore();
 
     // recommended windows: going out on a line just outside the ring (green, or yellow when only
     // OK), pool time on a line just inside it (blue for good hours, pale blue for OK ones). The
@@ -331,6 +344,75 @@ export function mountClock(
     ctx.globalCompositeOperation = "source-over";
   }
 
+  // the ring itself burning where the sun burns skin: a white-hot glowing band, tongues rooted on
+  // its inner edge burning through it and out (drawFlames carries them further out)
+  function drawBandFire(t) {
+    ctx.globalCompositeOperation = "lighter";
+    const W = R_OUT - R_IN;
+    for (let d = 0; d < 360; d += 2) {
+      const k = uvK(d + 1);
+      if (k < 0.02) continue;
+      const fl = noise(d * 0.13, t * 0.8);
+      const gr = ctx.createRadialGradient(CX, CX, R_IN - 2, CX, CX, R_OUT + 2);
+      gr.addColorStop(0, `rgba(255,${(80 + 40 * fl) | 0},0,${0.3 * k})`);
+      gr.addColorStop(0.5, `rgba(255,${(120 + 50 * fl) | 0},20,${(0.12 + 0.22 * fl) * k})`);
+      gr.addColorStop(1, `rgba(180,30,0,${0.08 * k})`);
+      ctx.beginPath(); ctx.arc(CX, CX, R_OUT, ang(d), ang(d + 2.2)); ctx.arc(CX, CX, R_IN, ang(d + 2.2), ang(d), true); ctx.closePath();
+      ctx.fillStyle = gr; ctx.fill();
+    }
+    for (let d = 0; d < 360; d += 1.7) {
+      const k = uvK(d);
+      if (k < 0.03) continue;
+      const n = noise(d * 0.31 + 3, t * 1.15), n2 = noise(d * 0.09 + 20, t * 0.8);
+      const hgt = W * (0.3 + 1.25 * n * n);
+      const half = 1.1 + 0.7 * k;
+      const sway = (n2 - 0.5) * 4;
+      const b0 = R_IN - 1, tipR = R_IN + hgt;
+      const p = (r, dd) => [CX + r * Math.cos(ang(dd)), CX + r * Math.sin(ang(dd))];
+      const [lx, ly] = p(b0, d - half), [rx, ry] = p(b0, d + half), [tx, ty] = p(tipR, d + sway);
+      const [c1x, c1y] = p(R_IN + hgt * 0.45, d - half * 0.9 + sway * 0.3), [c2x, c2y] = p(R_IN + hgt * 0.45, d + half * 0.9 + sway * 0.3);
+      const [bx, by] = p(b0, d);
+      const gr = ctx.createLinearGradient(bx, by, tx, ty);
+      gr.addColorStop(0, `rgba(255,200,110,${0.5 * k})`);
+      gr.addColorStop(0.35, `rgba(255,130,30,${0.45 * k})`);
+      gr.addColorStop(0.75, `rgba(220,50,0,${0.28 * k})`);
+      gr.addColorStop(1, "rgba(200,20,0,0)");
+      ctx.beginPath(); ctx.moveTo(lx, ly); ctx.quadraticCurveTo(c1x, c1y, tx, ty); ctx.quadraticCurveTo(c2x, c2y, rx, ry); ctx.closePath();
+      ctx.fillStyle = gr; ctx.fill();
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  // the ring itself made of gas where the air hurts lungs: dense churning violet smog (sand for
+  // dust) filling the band, on top of the haze drawGas spills inside it
+  const BAND_GAS = Array.from({ length: 300 }, (_, i) => ({
+    a: (i / 300) * 360 + Math.random() * 2,
+    off: Math.random(),
+    size: 0.55 + Math.random() * 0.6,
+    sp: (Math.random() < 0.5 ? -1 : 1) * (0.8 + Math.random() * 1.6),
+    ph: Math.random() * TAU,
+  }));
+  function drawBandGas(t) {
+    const W = R_OUT - R_IN;
+    BAND_GAS.forEach(p => {
+      const a = p.a + Math.sin(t * 0.5 + p.ph) * 2.5 + t * p.sp * 0.3;
+      const k = at(sig.air, a, FX_HOLD);
+      if (k < 0.02) return;
+      const dust = at(sig.dust, a, FX_HOLD);
+      const r = R_IN + W * (0.05 + 0.9 * p.off) + Math.sin(t * 0.7 + p.ph * 2) * W * 0.12;
+      const x = CX + r * Math.cos(ang(a)), y = CX + r * Math.sin(ang(a));
+      const rad = W * 0.62 * p.size * (0.85 + 0.15 * Math.sin(t * 1.1 + p.ph));
+      const toxic = p.ph > 3.2 ? [150, 90, 255] : [200, 140, 255], sand = p.ph > 3.2 ? [190, 140, 80] : [230, 190, 125];
+      const c = toxic.map((v, i) => v + (sand[i] - v) * dust);
+      const gr = ctx.createRadialGradient(x, y, 0, x, y, rad);
+      gr.addColorStop(0, rgb(c, 0.42 * k));
+      gr.addColorStop(0.55, rgb(c, 0.18 * k));
+      gr.addColorStop(1, rgb(c, 0));
+      ctx.fillStyle = gr;
+      ctx.beginPath(); ctx.arc(x, y, rad, 0, TAU); ctx.fill();
+    });
+  }
+
   function drawGas(t) {
     GAS.forEach(p => {
       const a = p.a + t * p.sp + Math.sin(t * 0.4 + p.ph) * 3;
@@ -417,6 +499,8 @@ export function mountClock(
     ctx.drawImage(ringLayer, 0, 0, S, S);
     ctx.globalAlpha = e;
     drawGas(t);
+    drawBandGas(t);
+    drawBandFire(t);
     drawFlames(t);
     ctx.restore();
     drawMarkers(t);
