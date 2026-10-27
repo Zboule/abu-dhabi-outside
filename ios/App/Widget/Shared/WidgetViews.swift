@@ -130,30 +130,16 @@ struct BurnFill: View {
     }
 }
 
-/// The bad-air palette, graphic: a dark back cloud, a bright front cloud, a light rim, fumes.
+/// The bad-air palette: dark, bright and light particles.
 struct AirInk {
-    let back, front, rim, fume: Color
-    static let smog = AirInk(back: Color(hex: "#3b1785"), front: Color(hex: "#8c5cff"), rim: Color(hex: "#d4bcff"), fume: Color(hex: "#e6d9ff"))
-    static let dust = AirInk(back: Color(hex: "#6b4520"), front: Color(hex: "#c8955a"), rim: Color(hex: "#f0d3a2"), fume: Color(hex: "#fbe8c6"))
+    let back, front, rim: Color
+    static let smog = AirInk(back: Color(hex: "#3b1785"), front: Color(hex: "#8c5cff"), rim: Color(hex: "#d4bcff"))
+    static let dust = AirInk(back: Color(hex: "#6b4520"), front: Color(hex: "#c8955a"), rim: Color(hex: "#f0d3a2"))
+    var all: [Color] { [back, front, rim] }
 }
 
-/// A cartoon cloud: a flat base along the bottom of `rect`, round bumps across its top.
-func cloudPath(in rect: CGRect, rng: inout Scatter) -> Path {
-    var p = Path()
-    let h = rect.height
-    p.addRoundedRect(in: CGRect(x: rect.minX, y: rect.maxY - h * 0.42, width: rect.width, height: h * 0.42),
-                     cornerSize: CGSize(width: h * 0.2, height: h * 0.2))
-    let n = max(2, Int((rect.width / (h * 0.55)).rounded()))
-    for i in 0..<n {
-        let r = h * (0.3 + 0.16 * rng.next())
-        let x = rect.minX + rect.width * (CGFloat(i) + 0.5) / CGFloat(n)
-        p.addEllipse(in: CGRect(x: x - r, y: rect.maxY - h * 0.38 - r, width: 2 * r, height: 2 * r))
-    }
-    return p
-}
-
-/// Lung-wrecking air, drawn graphic: a dark cloud behind, a bright one in front with a light rim,
-/// fume streaks across it (smog) or wind and grit (dust), fine particles rising over it.
+/// Lung-wrecking air: a mass of crisp particles, dense at the bottom and thinning out upward,
+/// violet for smog, sand for dust. What the air is full of.
 struct AirFill: View {
     let dust: Bool
     let seed: Int
@@ -163,33 +149,11 @@ struct AirFill: View {
             let w = size.width, h = size.height
             let ink = dust ? AirInk.dust : AirInk.smog
             var rng = Scatter(seed + (dust ? 100 : 0))
-            let back = cloudPath(in: CGRect(x: -1, y: h * 0.12, width: w + 2, height: h * 0.88), rng: &rng)
-            ctx.fill(back, with: .color(ink.back))
-            let front = cloudPath(in: CGRect(x: w * 0.04, y: h * 0.38, width: w * 0.92, height: h * 0.62), rng: &rng)
-            ctx.fill(front.offsetBy(dx: 0, dy: -1.5), with: .color(ink.rim))
-            ctx.fill(front, with: .color(ink.front))
-            // fumes (smog) or wind (dust): wavy streaks across the front cloud
-            for k in 0..<2 {
-                var line = Path()
-                let y = h * (0.62 + 0.17 * CGFloat(k))
-                line.move(to: CGPoint(x: w * 0.1, y: y))
-                var x = w * 0.1
-                var up = k == 0
-                while x < w * 0.9 {
-                    let step = min(5, w * 0.8 - (x - w * 0.1))
-                    guard step > 0.5 else { break }
-                    line.addQuadCurve(to: CGPoint(x: x + step, y: y), control: CGPoint(x: x + step / 2, y: y + (up ? -1.8 : 1.8)))
-                    x += step
-                    up.toggle()
-                }
-                ctx.stroke(line, with: .color(ink.fume.opacity(dust ? 0.65 : 0.85)), style: StrokeStyle(lineWidth: 1.1, lineCap: .round))
-            }
-            // particles rising over the cloud, grit inside it for dust
-            for _ in 0..<max(4, Int(w / 3)) {
-                let d = 1.0 + rng.next() * 1.4
-                let y = dust ? h * (0.15 + 0.8 * rng.next()) : h * (0.02 + 0.3 * rng.next())
-                ctx.fill(Path(ellipseIn: CGRect(x: rng.next() * w, y: y, width: d, height: d)),
-                         with: .color(dust && rng.next() > 0.5 ? ink.back : ink.front))
+            for _ in 0..<Int(w * h / 5) {
+                let y = h * (1 - pow(rng.next(), 1.6))
+                let d = (1.2 + rng.next() * 3.2) * (0.5 + y / h)
+                let c = ink.all[Int(rng.next() * 2.99)]
+                ctx.fill(Path(ellipseIn: CGRect(x: rng.next() * w - d / 2, y: y - d / 2, width: d, height: d)), with: .color(c))
             }
         }
     }
@@ -358,21 +322,17 @@ struct DayRing: View {
                     let a0 = Double(h.hour) / 24 * 2 * .pi - .pi / 2
                     let span = 2 * Double.pi / 24
                     if let air = z.air {
-                        // graphic cloud bubbles strung along the hour: dark ones behind, bright in front, a rim
+                        // the same particle mass across the band
                         let ink = air == .dust ? AirInk.dust : AirInk.smog
-                        let bubbles = { (radius: CGFloat, rad: CGFloat, n: Int, shift: Double) -> Path in
-                            var p = Path()
-                            for k in 0..<n {
-                                let a = a0 + span * (Double(k) + shift) / Double(n)
-                                let q = pt(rad, a)
-                                p.addEllipse(in: CGRect(x: q.x - radius, y: q.y - radius, width: 2 * radius, height: 2 * radius))
-                            }
-                            return p
+                        var rng = Scatter(h.hour + (air == .dust ? 100 : 0))
+                        for _ in 0..<70 {
+                            let a = a0 + span * Double(rng.next())
+                            let off = (rng.next() + rng.next() - 1) * t * 0.7
+                            let d = (1.0 + rng.next() * 2.6) * (1.15 - abs(off) / t)
+                            let q = pt(r + off, a)
+                            ctx.fill(Path(ellipseIn: CGRect(x: q.x - d / 2, y: q.y - d / 2, width: d, height: d)),
+                                     with: .color(ink.all[Int(rng.next() * 2.99)]))
                         }
-                        ctx.fill(bubbles(t * 0.5, r + t * 0.12, 3, 0.5), with: .color(ink.back))
-                        let front = bubbles(t * 0.36, r - t * 0.12, 3, 0.25)
-                        ctx.fill(front.offsetBy(dx: 0, dy: -1.2), with: .color(ink.rim))
-                        ctx.fill(front, with: .color(ink.front))
                     }
                     if z.sun {
                         for k in 0..<7 {
