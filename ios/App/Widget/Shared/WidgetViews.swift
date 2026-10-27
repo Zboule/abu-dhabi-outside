@@ -1,7 +1,8 @@
 import SwiftUI
 
 // The widget faces, shared with the snapshot tests (WidgetSnapshots). They speak the page's clock:
-// colour is how hot it feels, flames mark strong sun, a violet cloud smoggy air and a sandy one
+// colour is how hot it feels, a sun marks strong UV (the clock's flames: on a widget a flame reads
+// as "hot", which the colour already says), a violet cloud smoggy air and a sandy one
 // dust, a line outside marks the good time to go out (green good, yellow OK), a blue line inside
 // pool time. Colours: contract/tokens.json and src/outdoor/clock.ts.
 
@@ -16,7 +17,7 @@ enum Palette {
     static let pool = (good: Color(hex: "#40c4ff"), ok: Color(hex: "#9bdcff"))
     static let smog = Color(hex: "#b98cff")
     static let dust = Color(hex: "#e2b872")
-    static let flame = Color(hex: "#ffe27a")
+    static let sun = Color.white
     static let noData = Color(hex: "#3c3c43")
 
     static func heat(_ h: FeedHour) -> Color { h.heatColor.map(Color.init(hex:)) ?? noData }
@@ -43,7 +44,7 @@ extension Level {
     }
 }
 
-/// Flame and cloud marks for one hour, as the clock's flames and gas.
+/// Sun and cloud marks for one hour, as the clock's flames and gas.
 struct HourMarks: View {
     let h: FeedHour
     let size: CGFloat
@@ -51,14 +52,14 @@ struct HourMarks: View {
     var body: some View {
         VStack(spacing: 0) {
             if h.strongSun == true {
-                Image(systemName: "flame.fill").foregroundStyle(Palette.flame)
+                Image(systemName: "sun.max.fill").foregroundStyle(Palette.sun)
             }
             if let c = Palette.air(h.badAir) {
                 Image(systemName: "cloud.fill").foregroundStyle(c)
             }
         }
         .font(.system(size: size, weight: .bold))
-        .shadow(color: .black.opacity(0.45), radius: 1)
+        .shadow(color: .black.opacity(0.5), radius: 1.2)
     }
 }
 
@@ -75,7 +76,7 @@ struct Stale: View {
 }
 
 /// Today's day hours as a strip, the clock unrolled: the going-out line on top, the hours
-/// coloured by heat with their flames and clouds, the pool line under, now outlined. Past hours
+/// coloured by heat with their suns and clouds, the pool line under, now outlined. Past hours
 /// keep their colour, as on the clock (faded, a red hour reads as a cooler pink one).
 struct DayStrip: View {
     let s: Snapshot
@@ -108,7 +109,7 @@ struct DayStrip: View {
 }
 
 /// Today as a ring, like the page's clock: midnight at the top, noon at the bottom; the
-/// going-out arc outside, the pool arc inside, flames and clouds on the hours, a dot on now.
+/// going-out arc outside, the pool arc inside, suns and clouds on the hours, a dot on now.
 struct DayRing: View {
     let s: Snapshot
 
