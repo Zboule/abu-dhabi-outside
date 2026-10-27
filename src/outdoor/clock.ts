@@ -3,7 +3,8 @@
 //
 // The Today view: when to go out first, then a 24h clock drawn on canvas. The ring is the
 // feels-like temperature as a continuous spectrum (green, orange, red), flames lick out of
-// hours with strong sun, a drifting violet gas marks polluted air (sandy haze for dust), a
+// hours with strong sun (where the ring itself burns), a swarm of violet particles is the ring where
+// the air is polluted (sand for dust), a
 // bright arc marks the good window (inside the day set in the settings; the rest is darkened),
 // and plain "why" rows follow.
 // Drag around the clock to scrub an hour; tap the middle to come back to now.
@@ -40,7 +41,7 @@ export const CLOCK_HTML = `
 <h1 data-c="headline"></h1>
 <div class="sub" data-c="sub"></div>
 <div class="dial" data-c="dial">
-  <canvas data-c="cv" aria-label="The day as a clock. Colour is how hot it feels, flames mark strong sun, violet gas marks polluted air. Drag around it to see each hour."></canvas>
+  <canvas data-c="cv" aria-label="The day as a clock. Colour is how hot it feels, flames mark strong sun, violet particles mark polluted air. Drag around it to see each hour."></canvas>
   <div class="centre">
     <div class="c-when" data-c="cWhen"></div>
     <div class="c-word" data-c="cWord"></div>
@@ -161,15 +162,15 @@ export function mountClock(
     feels: hours.map(h => h.heatFeels ?? h.feels),
     night: hours.map((h, i) => (i < WAKE || i >= SLEEP ? 1 : 0)),
     // flames only where the sun is too strong ("avoid"); the "hats on" warning zone stays clear.
-    // Bad air wins over the sun: an hour with both shows the gas only
+    // Bad air wins over the sun: an hour with both shows the particles only
     uv: hours.map(h => (h.night || h.air === "bad" ? 0 : h.uvLevel === "bad" ? 0.6 + 0.4 * Math.min(1, (h.uv - 6) / 4) : 0)),
-    // gas only where the air is over the limit ("avoid"); the OK warning zone stays clear
+    // particles only where the air is over the limit ("avoid"); the OK warning zone stays clear
     air: hours.map(h => (h.air === "bad" ? 1 : 0)),
     dust: hours.map(h => (h.air !== "good" && RANK[h.dustLevel] >= RANK[h.pollutionLevel] && h.dustLevel !== "good" ? 1 : 0)),
   };
   const smooth = t => t * t * (3 - 2 * t);
   const HEAT_HOLD = 0.3; // as the tiles: hours blend a little faster than a full hour
-  // flames and gas stay inside their hour (fading only near its edges), so they never spill
+  // flames and particles stay inside their hour (fading only near its edges), so they never spill
   // under a neighbour hour's pool or going-out line
   const FX_HOLD = 0.8;
   // hold: the share of each hour that keeps its own value before blending into the next
@@ -211,7 +212,7 @@ export function mountClock(
     for (let d = 0; d < 360; d += step) {
       const c = heatRGB(at(sig.feels, d + step / 2, HEAT_HOLD), DATA.heat);
       // hours to avoid whatever the heat have no ring: the fire or the gas is the ring there
-      // (drawBandFire, drawBandGas), the temperature doesn't matter
+      // (drawFlames, drawAirParticles), the temperature doesn't matter
       const haz = hazardAt(d + step / 2);
       if (haz > 0.98) continue;
       const nt = at(sig.night, d + step / 2);
@@ -235,7 +236,7 @@ export function mountClock(
 
     // recommended windows: going out on a line just outside the ring (green, or yellow when only
     // OK), pool time on a line just inside it (blue for good hours, pale blue for OK ones). The
-    // inside is free for it: the gas and haze there only mark bad air, which pool time never has.
+    // inside is free for it: the particles there only mark bad air, which pool time never has.
     // Today's earlier windows stay faint and thin, so a missed morning still shows.
     const windows = (from, to, good, ok, colGood, colOk) => {
       const g1 = runs(from, good, to);
@@ -274,51 +275,39 @@ export function mountClock(
   // cheap smooth noise: layered sines, enough for flicker
   const noise = (x, t) => 0.5 + 0.28 * Math.sin(x * 1.7 + t * 5.3) + 0.14 * Math.sin(x * 3.9 - t * 8.1 + 1.3) + 0.08 * Math.sin(x * 9.1 + t * 13.7 + 4);
 
-  // gas: particles all around the dial, visible only where the air is bad
-  // two layers: big slow haze hugging the inner edge, and smaller wisps drifting over it
-  const GAS = Array.from({ length: 240 }, (_, i) => {
-    const base = i % 2 === 0;
-    return {
-    a: (i / 240) * 360 + Math.random() * 3,
-    off: base ? Math.random() * 0.6 - 0.1 : Math.random() * 2 - 1,
-    base,
-    size: base ? 1.1 + Math.random() * 0.5 : 0.45 + Math.random() * 0.6,
-    sp: (Math.random() < 0.5 ? -1 : 1) * (1.2 + Math.random() * 2.2),
-    ph: Math.random() * TAU,
-    };
-  });
   // sparks rising out of the flames
   const SPARKS = Array.from({ length: 46 }, () => ({ a: 0, life: 1, t0: -Math.random() * 2, dur: 0.9 + Math.random() * 0.9, drift: Math.random() * 2 - 1 }));
 
   function drawFlames(t) {
     ctx.globalCompositeOperation = "lighter";
-    // soft heat glow behind the tongues
+    const W = R_OUT - R_IN;
+    // soft heat glow behind the tongues, from the band out
     for (let d = 0; d < 360; d += 2) {
       const u = at(sig.uv, d + 1, FX_HOLD);
       if (u < 0.02) continue;
-      const r1 = R_OUT + 4 + 26 * u;
-      const gr = ctx.createRadialGradient(CX, CX, R_OUT - 4, CX, CX, r1);
-      gr.addColorStop(0, `rgba(255,120,20,${0.22 * u})`); gr.addColorStop(1, "rgba(255,60,0,0)");
-      ctx.beginPath(); ctx.arc(CX, CX, r1, ang(d), ang(d + 2.2)); ctx.arc(CX, CX, R_OUT - 4, ang(d + 2.2), ang(d), true);
+      const r1 = R_OUT + 10 + 40 * u;
+      const gr = ctx.createRadialGradient(CX, CX, R_IN, CX, CX, r1);
+      gr.addColorStop(0, `rgba(255,110,10,${0.28 * u})`); gr.addColorStop(0.45, `rgba(255,120,20,${0.2 * u})`); gr.addColorStop(1, "rgba(255,60,0,0)");
+      ctx.beginPath(); ctx.arc(CX, CX, r1, ang(d), ang(d + 2.2)); ctx.arc(CX, CX, R_IN, ang(d + 2.2), ang(d), true);
       ctx.fillStyle = gr; ctx.fill();
     }
-    // tongues
-    for (let d = 0; d < 360; d += 1.6) {
+    // one fire: tongues rooted on the inner edge of the band, burning through it and far out
+    for (let d = 0; d < 360; d += 1.5) {
       const u = at(sig.uv, d, FX_HOLD);
       if (u < 0.03) continue;
       const n = noise(d * 0.19, t), n2 = noise(d * 0.07 + 10, t * 0.7);
       const q = Math.sqrt(u); // gentle sun: shorter flames, but still bright, never muddy
-      const hgt = S * (0.018 + 0.07 * u) * (0.35 + 0.95 * n);
-      const half = 1.5 + 1.1 * u;
-      const sway = (n2 - 0.5) * 5;
-      const b0 = R_OUT - 3, tipR = R_OUT + hgt;
+      const hgt = W * (0.8 + 0.4 * n) + S * (0.03 + 0.1 * u) * (0.35 + 0.95 * n);
+      const half = 1.7 + 1.3 * u;
+      const sway = (n2 - 0.5) * 6;
+      const b0 = R_IN - 1, tipR = R_IN + hgt;
       const p = (r, dd) => [CX + r * Math.cos(ang(dd)), CX + r * Math.sin(ang(dd))];
       const [lx, ly] = p(b0, d - half), [rx, ry] = p(b0, d + half), [tx, ty] = p(tipR, d + sway);
-      const [c1x, c1y] = p(R_OUT + hgt * 0.45, d - half * 0.9 + sway * 0.3), [c2x, c2y] = p(R_OUT + hgt * 0.45, d + half * 0.9 + sway * 0.3);
+      const [c1x, c1y] = p(R_IN + hgt * 0.45, d - half * 0.9 + sway * 0.3), [c2x, c2y] = p(R_IN + hgt * 0.45, d + half * 0.9 + sway * 0.3);
       const [bx, by] = p(b0, d);
       const gr = ctx.createLinearGradient(bx, by, tx, ty);
-      gr.addColorStop(0, `rgba(255,236,170,${0.8 * q})`);
-      gr.addColorStop(0.3, `rgba(255,170,50,${0.62 * q})`);
+      gr.addColorStop(0, `rgba(255,220,140,${0.55 * q})`);
+      gr.addColorStop(0.3, `rgba(255,170,50,${0.55 * q})`);
       gr.addColorStop(0.7, `rgba(255,80,10,${0.32 * q})`);
       gr.addColorStop(1, "rgba(200,20,0,0)");
       ctx.beginPath();
@@ -337,7 +326,7 @@ export function mountClock(
         for (let tries = 0; tries < 12; tries++) { const a = Math.random() * 360; if (Math.random() < at(sig.uv, a, FX_HOLD)) { s.a = a; s.u = at(sig.uv, a, FX_HOLD); break; } s.u = 0; }
       }
       if (!s.u) return;
-      const r = R_OUT + 4 + k * S * 0.09 * s.u;
+      const r = R_OUT + 8 + k * S * 0.12 * s.u;
       const a = s.a + s.drift * k * 4;
       ctx.fillStyle = `rgba(255,210,120,${(1 - k) * 0.9 * s.u})`;
       ctx.beginPath(); ctx.arc(CX + r * Math.cos(ang(a)), CX + r * Math.sin(ang(a)), 1.1, 0, TAU); ctx.fill();
@@ -345,101 +334,37 @@ export function mountClock(
     ctx.globalCompositeOperation = "source-over";
   }
 
-  // the ring itself burning where the sun burns skin: a white-hot glowing band, tongues rooted on
-  // its inner edge burning through it and out (drawFlames carries them further out)
-  function drawBandFire(t) {
-    ctx.globalCompositeOperation = "lighter";
-    const W = R_OUT - R_IN;
-    for (let d = 0; d < 360; d += 2) {
-      const k = uvK(d + 1);
-      if (k < 0.02) continue;
-      const fl = noise(d * 0.13, t * 0.8);
-      const gr = ctx.createRadialGradient(CX, CX, R_IN - 2, CX, CX, R_OUT + 2);
-      gr.addColorStop(0, `rgba(255,${(80 + 40 * fl) | 0},0,${0.3 * k})`);
-      gr.addColorStop(0.5, `rgba(255,${(120 + 50 * fl) | 0},20,${(0.12 + 0.22 * fl) * k})`);
-      gr.addColorStop(1, `rgba(180,30,0,${0.08 * k})`);
-      ctx.beginPath(); ctx.arc(CX, CX, R_OUT, ang(d), ang(d + 2.2)); ctx.arc(CX, CX, R_IN, ang(d + 2.2), ang(d), true); ctx.closePath();
-      ctx.fillStyle = gr; ctx.fill();
-    }
-    for (let d = 0; d < 360; d += 1.7) {
-      const k = uvK(d);
-      if (k < 0.03) continue;
-      const n = noise(d * 0.31 + 3, t * 1.15), n2 = noise(d * 0.09 + 20, t * 0.8);
-      const hgt = W * (0.3 + 1.25 * n * n);
-      const half = 1.1 + 0.7 * k;
-      const sway = (n2 - 0.5) * 4;
-      const b0 = R_IN - 1, tipR = R_IN + hgt;
-      const p = (r, dd) => [CX + r * Math.cos(ang(dd)), CX + r * Math.sin(ang(dd))];
-      const [lx, ly] = p(b0, d - half), [rx, ry] = p(b0, d + half), [tx, ty] = p(tipR, d + sway);
-      const [c1x, c1y] = p(R_IN + hgt * 0.45, d - half * 0.9 + sway * 0.3), [c2x, c2y] = p(R_IN + hgt * 0.45, d + half * 0.9 + sway * 0.3);
-      const [bx, by] = p(b0, d);
-      const gr = ctx.createLinearGradient(bx, by, tx, ty);
-      gr.addColorStop(0, `rgba(255,200,110,${0.5 * k})`);
-      gr.addColorStop(0.35, `rgba(255,130,30,${0.45 * k})`);
-      gr.addColorStop(0.75, `rgba(220,50,0,${0.28 * k})`);
-      gr.addColorStop(1, "rgba(200,20,0,0)");
-      ctx.beginPath(); ctx.moveTo(lx, ly); ctx.quadraticCurveTo(c1x, c1y, tx, ty); ctx.quadraticCurveTo(c2x, c2y, rx, ry); ctx.closePath();
-      ctx.fillStyle = gr; ctx.fill();
-    }
-    ctx.globalCompositeOperation = "source-over";
-  }
-
-  // the ring itself made of gas where the air hurts lungs: dense churning violet smog (sand for
-  // dust) filling the band, on top of the haze drawGas spills inside it
-  const BAND_GAS = Array.from({ length: 300 }, (_, i) => ({
-    a: (i / 300) * 360 + Math.random() * 2,
-    off: Math.random(),
-    size: 0.55 + Math.random() * 0.6,
-    sp: (Math.random() < 0.5 ? -1 : 1) * (0.8 + Math.random() * 1.6),
+  // the ring itself made of particles where the air hurts lungs: a swarm of crisp dots filling
+  // the band, densest at its middle, drifting and jittering; violet for smog, sand for dust (the
+  // widgets draw the same, still)
+  const AIR_INK = { smog: [[59, 23, 133], [140, 92, 255], [212, 188, 255]], dust: [[107, 69, 32], [200, 149, 90], [240, 211, 162]] };
+  const AIR_P = Array.from({ length: 4200 }, () => ({
+    a: Math.random() * 360,
+    off: Math.random() + Math.random() - 1, // -1..1, most near 0: dense in the middle of the band
+    size: 1.3 + Math.random() * 3.2,
+    sp: (Math.random() < 0.5 ? -1 : 1) * (0.4 + Math.random() * 1.4),
     ph: Math.random() * TAU,
+    tone: Math.floor(Math.random() * 3),
   }));
-  function drawBandGas(t) {
-    const W = R_OUT - R_IN;
-    BAND_GAS.forEach(p => {
-      const a = p.a + Math.sin(t * 0.5 + p.ph) * 2.5 + t * p.sp * 0.3;
+  function drawAirParticles(t) {
+    const W = R_OUT - R_IN, scale = S / 360;
+    AIR_P.forEach(p => {
+      const a = p.a + Math.sin(t * 0.35 + p.ph) * 2.2 + Math.sin(t * 1.7 + p.ph * 3) * 0.35;
       const k = at(sig.air, a, FX_HOLD);
-      if (k < 0.02) return;
+      if (k < 0.05) return;
       const dust = at(sig.dust, a, FX_HOLD);
-      const r = R_IN + W * (0.05 + 0.9 * p.off) + Math.sin(t * 0.7 + p.ph * 2) * W * 0.12;
-      const x = CX + r * Math.cos(ang(a)), y = CX + r * Math.sin(ang(a));
-      const rad = W * 0.62 * p.size * (0.85 + 0.15 * Math.sin(t * 1.1 + p.ph));
-      const toxic = p.ph > 3.2 ? [150, 90, 255] : [200, 140, 255], sand = p.ph > 3.2 ? [190, 140, 80] : [230, 190, 125];
-      const c = toxic.map((v, i) => v + (sand[i] - v) * dust);
-      const gr = ctx.createRadialGradient(x, y, 0, x, y, rad);
-      gr.addColorStop(0, rgb(c, 0.42 * k));
-      gr.addColorStop(0.55, rgb(c, 0.18 * k));
-      gr.addColorStop(1, rgb(c, 0));
-      ctx.fillStyle = gr;
-      ctx.beginPath(); ctx.arc(x, y, rad, 0, TAU); ctx.fill();
-    });
-  }
-
-  function drawGas(t) {
-    GAS.forEach(p => {
-      const a = p.a + t * p.sp + Math.sin(t * 0.4 + p.ph) * 3;
-      const k = at(sig.air, a, FX_HOLD);
-      if (k < 0.02) return;
-      const dust = at(sig.dust, a, FX_HOLD);
-      const r = R_IN - S * (p.base ? 0.03 : 0.04) - p.off * S * 0.03 + Math.sin(t * 0.6 + p.ph * 2) * S * 0.012;
-      const x = CX + r * Math.cos(ang(a)), y = CX + r * Math.sin(ang(a));
-      const rad = S * 0.045 * p.size * (0.85 + 0.15 * Math.sin(t * 0.9 + p.ph));
-      // violet, never green: green is the comfortable colour of the ring
-      const toxic = p.ph > 3.2 ? [150, 90, 255] : [200, 140, 255], sand = p.ph > 3.2 ? [190, 140, 80] : [230, 190, 125];
-      const c = toxic.map((v, i) => v + (sand[i] - v) * dust);
-      const gr = ctx.createRadialGradient(x, y, 0, x, y, rad);
-      const al = p.base ? 0.16 : 0.3;
-      gr.addColorStop(0, rgb(c, al * k));
-      gr.addColorStop(0.5, rgb(c, al * 0.45 * k));
-      gr.addColorStop(1, rgb(c, 0));
-      ctx.fillStyle = gr;
-      ctx.beginPath(); ctx.arc(x, y, rad, 0, TAU); ctx.fill();
+      const r = R_MID + p.off * W * 0.68 + Math.sin(t * 1.2 * p.sp + p.ph * 2) * W * 0.06;
+      const d = p.size * scale * (1.15 - Math.abs(p.off) * 0.55);
+      const c = AIR_INK.smog[p.tone].map((v, i) => v + (AIR_INK.dust[p.tone][i] - v) * dust);
+      ctx.fillStyle = rgb(c, k);
+      ctx.beginPath(); ctx.arc(CX + r * Math.cos(ang(a)), CX + r * Math.sin(ang(a)), d / 2, 0, TAU); ctx.fill();
     });
   }
 
   let selected = home;
   function drawMarkers(t) {
     // the time of day: ticks across the ring (every hour, stronger every 6) and clear labels,
-    // drawn on top of the gas and flames so they always read
+    // drawn on top of the particles and flames so they always read
     ctx.save();
     ctx.lineCap = "round";
     for (let h = 0; h < 24; h++) {
@@ -499,9 +424,7 @@ export function mountClock(
     if (e < 1) { ctx.beginPath(); ctx.moveTo(CX, CX); ctx.arc(CX, CX, S, ang(0), ang(360 * e)); ctx.closePath(); ctx.clip(); }
     ctx.drawImage(ringLayer, 0, 0, S, S);
     ctx.globalAlpha = e;
-    drawGas(t);
-    drawBandGas(t);
-    drawBandFire(t);
+    drawAirParticles(t);
     drawFlames(t);
     ctx.restore();
     drawMarkers(t);
@@ -580,8 +503,8 @@ export function mountClock(
   const glyph = (k, color) =>
     `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="${color}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 0 5px ${color}55)">${ROW_GLYPH[k]}</svg>`;
   const QUIET = "rgba(235,235,245,.45)";
-  // bad air wears the colour of the gas drawn on the ring (violet smog, sand for dust), so the row reads as that cloud
-  const GAS_COL = { air: "#b98cff", dust: "#e2b872" };
+  // bad air wears the colour of the particles drawn on the ring (violet smog, sand for dust), so the row reads as that cloud
+  const GAS_COL = { air: "#a77bff", dust: "#d7a96b" };
   function hourRows(h) {
     const dusty = RANK[h.dustLevel] >= RANK[h.pollutionLevel] && RANK[h.dustLevel] > 0;
     const gas = h.air === "bad" ? (dusty ? GAS_COL.dust : GAS_COL.air) : "";
