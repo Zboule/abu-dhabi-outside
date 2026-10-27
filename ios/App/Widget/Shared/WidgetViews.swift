@@ -130,22 +130,30 @@ struct BurnFill: View {
     }
 }
 
-/// The clock's gas colours: violet smog (never green, green is comfort), sandy dust.
-func gasColor(dust: Bool, light: Bool) -> Color {
-    dust ? (light ? Color(red: 230 / 255, green: 190 / 255, blue: 125 / 255) : Color(red: 190 / 255, green: 140 / 255, blue: 80 / 255))
-        : (light ? Color(red: 200 / 255, green: 140 / 255, blue: 1) : Color(red: 150 / 255, green: 90 / 255, blue: 1))
+/// The bad-air palette, graphic: a dark back cloud, a bright front cloud, a light rim, fumes.
+struct AirInk {
+    let back, front, rim, fume: Color
+    static let smog = AirInk(back: Color(hex: "#3b1785"), front: Color(hex: "#8c5cff"), rim: Color(hex: "#d4bcff"), fume: Color(hex: "#e6d9ff"))
+    static let dust = AirInk(back: Color(hex: "#6b4520"), front: Color(hex: "#c8955a"), rim: Color(hex: "#f0d3a2"), fume: Color(hex: "#fbe8c6"))
 }
 
-/// One soft puff of gas, a radial gradient fading out, as the clock's particles.
-func gasPuff(_ ctx: inout GraphicsContext, at c: CGPoint, radius r: CGFloat, color: Color, alpha: Double) {
-    ctx.fill(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)), with: .radialGradient(
-        Gradient(stops: [.init(color: color.opacity(alpha), location: 0), .init(color: color.opacity(alpha * 0.45), location: 0.5),
-                         .init(color: color.opacity(0), location: 1)]),
-        center: c, startRadius: 0, endRadius: r))
+/// A cartoon cloud: a flat base along the bottom of `rect`, round bumps across its top.
+func cloudPath(in rect: CGRect, rng: inout Scatter) -> Path {
+    var p = Path()
+    let h = rect.height
+    p.addRoundedRect(in: CGRect(x: rect.minX, y: rect.maxY - h * 0.42, width: rect.width, height: h * 0.42),
+                     cornerSize: CGSize(width: h * 0.2, height: h * 0.2))
+    let n = max(2, Int((rect.width / (h * 0.55)).rounded()))
+    for i in 0..<n {
+        let r = h * (0.3 + 0.16 * rng.next())
+        let x = rect.minX + rect.width * (CGFloat(i) + 0.5) / CGFloat(n)
+        p.addEllipse(in: CGRect(x: x - r, y: rect.maxY - h * 0.38 - r, width: 2 * r, height: 2 * r))
+    }
+    return p
 }
 
-/// Lung-wrecking air, the clock's gas frozen: no block, a thick cloud with volume, a dark core
-/// (deep violet smog, umber dust), the gas colours around it, light wisps on top.
+/// Lung-wrecking air, drawn graphic: a dark cloud behind, a bright one in front with a light rim,
+/// fume streaks across it (smog) or wind and grit (dust), fine particles rising over it.
 struct AirFill: View {
     let dust: Bool
     let seed: Int
@@ -153,20 +161,35 @@ struct AirFill: View {
     var body: some View {
         Canvas { ctx, size in
             let w = size.width, h = size.height
+            let ink = dust ? AirInk.dust : AirInk.smog
             var rng = Scatter(seed + (dust ? 100 : 0))
-            let core = dust ? Color(hex: "#7a5228") : Color(hex: "#4a1fa8")
-            let layers: [(count: Int, size: ClosedRange<CGFloat>, alpha: Double)] = [
-                (max(5, Int(w * h / 80)), 0.45...0.75, 0.8),  // dark core
-                (max(8, Int(w * h / 40)), 0.3...0.55, 0.8),   // the gas
-                (max(6, Int(w * h / 60)), 0.15...0.3, 0.7),   // wisps
-            ]
-            for (i, l) in layers.enumerated() {
-                for _ in 0..<l.count {
-                    let r = (l.size.lowerBound + rng.next() * (l.size.upperBound - l.size.lowerBound)) * min(w * 1.2, h) + 2
-                    let c = CGPoint(x: rng.next() * w, y: h * (i == 0 ? 0.3 : 0.12) + rng.next() * h * (i == 0 ? 0.55 : 0.8))
-                    let color = i == 0 ? core : i == 1 ? gasColor(dust: dust, light: rng.next() > 0.6) : gasColor(dust: dust, light: true)
-                    gasPuff(&ctx, at: c, radius: r, color: color, alpha: l.alpha)
+            let back = cloudPath(in: CGRect(x: -1, y: h * 0.12, width: w + 2, height: h * 0.88), rng: &rng)
+            ctx.fill(back, with: .color(ink.back))
+            let front = cloudPath(in: CGRect(x: w * 0.04, y: h * 0.38, width: w * 0.92, height: h * 0.62), rng: &rng)
+            ctx.fill(front.offsetBy(dx: 0, dy: -1.5), with: .color(ink.rim))
+            ctx.fill(front, with: .color(ink.front))
+            // fumes (smog) or wind (dust): wavy streaks across the front cloud
+            for k in 0..<2 {
+                var line = Path()
+                let y = h * (0.62 + 0.17 * CGFloat(k))
+                line.move(to: CGPoint(x: w * 0.1, y: y))
+                var x = w * 0.1
+                var up = k == 0
+                while x < w * 0.9 {
+                    let step = min(5, w * 0.8 - (x - w * 0.1))
+                    guard step > 0.5 else { break }
+                    line.addQuadCurve(to: CGPoint(x: x + step, y: y), control: CGPoint(x: x + step / 2, y: y + (up ? -1.8 : 1.8)))
+                    x += step
+                    up.toggle()
                 }
+                ctx.stroke(line, with: .color(ink.fume.opacity(dust ? 0.65 : 0.85)), style: StrokeStyle(lineWidth: 1.1, lineCap: .round))
+            }
+            // particles rising over the cloud, grit inside it for dust
+            for _ in 0..<max(4, Int(w / 3)) {
+                let d = 1.0 + rng.next() * 1.4
+                let y = dust ? h * (0.15 + 0.8 * rng.next()) : h * (0.02 + 0.3 * rng.next())
+                ctx.fill(Path(ellipseIn: CGRect(x: rng.next() * w, y: y, width: d, height: d)),
+                         with: .color(dust && rng.next() > 0.5 ? ink.back : ink.front))
             }
         }
     }
@@ -335,14 +358,21 @@ struct DayRing: View {
                     let a0 = Double(h.hour) / 24 * 2 * .pi - .pi / 2
                     let span = 2 * Double.pi / 24
                     if let air = z.air {
-                        var rng = Scatter(h.hour)
-                        let core = air == .dust ? Color(hex: "#7a5228") : Color(hex: "#4a1fa8")
-                        for i in 0..<12 {
-                            let a = a0 + span * Double(rng.next())
-                            let rad = r + (rng.next() - 0.5) * t * 0.6
-                            gasPuff(&ctx, at: pt(rad, a), radius: t * (i < 4 ? 0.5 : 0.3 + rng.next() * 0.25),
-                                    color: i < 4 ? core : gasColor(dust: air == .dust, light: rng.next() > 0.5), alpha: 0.85)
+                        // graphic cloud bubbles strung along the hour: dark ones behind, bright in front, a rim
+                        let ink = air == .dust ? AirInk.dust : AirInk.smog
+                        let bubbles = { (radius: CGFloat, rad: CGFloat, n: Int, shift: Double) -> Path in
+                            var p = Path()
+                            for k in 0..<n {
+                                let a = a0 + span * (Double(k) + shift) / Double(n)
+                                let q = pt(rad, a)
+                                p.addEllipse(in: CGRect(x: q.x - radius, y: q.y - radius, width: 2 * radius, height: 2 * radius))
+                            }
+                            return p
                         }
+                        ctx.fill(bubbles(t * 0.5, r + t * 0.12, 3, 0.5), with: .color(ink.back))
+                        let front = bubbles(t * 0.36, r - t * 0.12, 3, 0.25)
+                        ctx.fill(front.offsetBy(dx: 0, dy: -1.2), with: .color(ink.rim))
+                        ctx.fill(front, with: .color(ink.front))
                     }
                     if z.sun {
                         for k in 0..<7 {
