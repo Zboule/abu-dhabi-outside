@@ -182,11 +182,11 @@ export function mountClock(
     return a + (b - a) * f;
   }
 
-  // how much an angle is a hazard hour (sun burning skin, or air hurting lungs), 0..1. Only inside
-  // the day hours (settings): outside them an hour sinks into the night like any other
-  const dayK = d => 1 - at(sig.night, d, FX_HOLD);
-  const uvK = d => Math.min(1, at(sig.uv, d, FX_HOLD) / 0.6) * dayK(d);
-  const airK = d => at(sig.air, d, FX_HOLD) * dayK(d);
+  // how much an angle is a hazard hour (sun burning skin, or air hurting lungs), 0..1. Outside the
+  // day hours (settings) the hazard still shows, sunk into the darkened area like its ring would be
+  const dayK = d => 1 - 0.7 * at(sig.night, d, FX_HOLD);
+  const uvK = d => Math.min(1, at(sig.uv, d, FX_HOLD) / 0.6);
+  const airK = d => at(sig.air, d, FX_HOLD);
   // effects of hours already gone fade like their ring
   const pastFade = d => 1 - 0.7 * at(sig.past, d, 0.85);
   const hazardAt = d => Math.max(uvK(d), airK(d));
@@ -333,7 +333,7 @@ export function mountClock(
       if (k >= 1 || k < 0) {
         // respawn somewhere the sun is strong (rejection sampling)
         s.t0 = t; k = 0;
-        for (let tries = 0; tries < 12; tries++) { const a = Math.random() * 360; if (Math.random() < uvK(a)) { s.a = a; s.u = uvK(a); break; } s.u = 0; }
+        for (let tries = 0; tries < 12; tries++) { const a = Math.random() * 360; if (Math.random() < uvK(a)) { s.a = a; s.u = uvK(a) * dayK(a); break; } s.u = 0; }
       }
       if (!s.u) return;
       const r = R_OUT + 8 + k * S * 0.08 * s.u;
@@ -360,7 +360,7 @@ export function mountClock(
     const W = R_OUT - R_IN, scale = S / 360;
     AIR_P.forEach(p => {
       const a = p.a + Math.sin(t * 0.35 + p.ph) * 2.2 + Math.sin(t * 1.7 + p.ph * 3) * 0.35;
-      const k = airK(a) * pastFade(a);
+      const k = airK(a) * dayK(a) * pastFade(a);
       if (k < 0.05) return;
       const dust = at(sig.dust, a, FX_HOLD);
       const r = R_MID + p.off * W * 0.68 + Math.sin(t * 1.2 * p.sp + p.ph * 2) * W * 0.06;

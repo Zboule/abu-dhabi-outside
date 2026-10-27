@@ -37,7 +37,7 @@ enum Palette {
     /// How far an hour sinks: outside the day hours like the night, today's past a little less.
     static let sinkNight = 0.74, sinkPast = 0.55
     /// Effects (fire, particles) and lines of sunk hours
-    static let fadeNight = 0.2, fadePast = 0.35
+    static let fadeNight = 0.3, fadePast = 0.35
     static func air(_ kind: String?) -> Color? { kind == "dust" ? dust : kind == "smog" ? smog : nil }
 }
 
@@ -343,8 +343,8 @@ struct DayRing: View {
     /// filling it.
     @ViewBuilder
     private func ringHour(_ h: FeedHour, _ r: CGFloat, _ t: CGFloat, sink: Double, fade: Double) -> some View {
-        // outside the day hours a hazard hour sinks into the night like any other: no effect
-        if let z = Hazard(h), s.inDay(h) {
+        // outside the day hours the hazard still shows, faded into the darkened part (`fade`)
+        if let z = Hazard(h) {
             ZStack {
                 Canvas { ctx, size in
                     let c = CGPoint(x: size.width / 2, y: size.height / 2)
