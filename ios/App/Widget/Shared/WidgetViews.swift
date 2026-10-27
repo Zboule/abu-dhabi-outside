@@ -88,18 +88,18 @@ struct DayStrip: View {
                     Capsule().fill(s.outLevel(h)?.color ?? .clear).frame(height: 4)
                     RoundedRectangle(cornerRadius: 3)
                         .fill(Palette.heat(h))
-                        .overlay(HourMarks(h: h, size: 9))
+                        .overlay(HourMarks(h: h, size: 12))
                         .overlay {
                             if h.hour == s.nowHour {
                                 RoundedRectangle(cornerRadius: 3).strokeBorder(Color.primary, lineWidth: 2)
                             }
                         }
-                        .frame(height: 26)
+                        .frame(minHeight: 26, maxHeight: .infinity) // the bar takes what the card has left
                     Capsule()
                         .fill(s.poolLevel(h) == .good ? Palette.pool.good : s.poolLevel(h) == .ok ? Palette.pool.ok : .clear)
                         .frame(height: 3)
                     Text(h.hour % 3 == 0 ? String(format: "%02d", h.hour) : " ")
-                        .font(.system(size: 9).monospacedDigit())
+                        .font(.system(size: 10, weight: .medium).monospacedDigit())
                         .foregroundStyle(.secondary)
                         .fixedSize()
                 }
@@ -187,23 +187,25 @@ struct MediumFace: View {
     let s: Snapshot
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Circle().fill(s.statusLevel.color).frame(width: 11, height: 11)
-                Text(s.status).font(.system(size: 24, weight: .bold, design: .rounded)).lineLimit(1)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 8) {
+                Circle().fill(s.statusLevel.color).frame(width: 12, height: 12)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(s.status).font(.system(size: 26, weight: .bold, design: .rounded)).lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(s.subline).font(.footnote.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
+                        Stale(s: s)
+                    }
+                }
                 Spacer(minLength: 4)
                 if let f = s.now?.feels, s.phase == .inDay {
-                    Text("feels").font(.caption2).foregroundStyle(.secondary)
-                    Text("\(Int(f.rounded()))°").font(.system(size: 24, weight: .semibold, design: .rounded))
+                    VStack(alignment: .trailing, spacing: -2) {
+                        Text("\(Int(f.rounded()))°").font(.system(size: 30, weight: .semibold, design: .rounded))
+                        Text("feels").font(.caption2).foregroundStyle(.secondary)
+                    }
                 }
             }
-            HStack {
-                Text(s.subline).font(.subheadline.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
-                Spacer(minLength: 4)
-                Stale(s: s)
-            }
-            Spacer(minLength: 0)
-            DayStrip(s: s)
+            DayStrip(s: s).frame(maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
