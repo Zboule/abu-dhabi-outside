@@ -160,8 +160,9 @@ export function mountClock(
   const sig = {
     feels: hours.map(h => h.heatFeels ?? h.feels),
     night: hours.map((h, i) => (i < WAKE || i >= SLEEP ? 1 : 0)),
-    // flames only where the sun is too strong ("avoid"); the "hats on" warning zone stays clear
-    uv: hours.map(h => (h.night ? 0 : h.uvLevel === "bad" ? 0.6 + 0.4 * Math.min(1, (h.uv - 6) / 4) : 0)),
+    // flames only where the sun is too strong ("avoid"); the "hats on" warning zone stays clear.
+    // Bad air wins over the sun: an hour with both shows the gas only
+    uv: hours.map(h => (h.night || h.air === "bad" ? 0 : h.uvLevel === "bad" ? 0.6 + 0.4 * Math.min(1, (h.uv - 6) / 4) : 0)),
     // gas only where the air is over the limit ("avoid"); the OK warning zone stays clear
     air: hours.map(h => (h.air === "bad" ? 1 : 0)),
     dust: hours.map(h => (h.air !== "good" && RANK[h.dustLevel] >= RANK[h.pollutionLevel] && h.dustLevel !== "good" ? 1 : 0)),

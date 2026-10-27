@@ -44,24 +44,23 @@ extension Level {
     }
 }
 
-/// Why an hour is to avoid whatever the heat: strong UV, bad air, or both. Those hours drop the
-/// heat colour (it no longer matters) for a drawing of the harm itself.
+/// Why an hour is to avoid whatever the heat: bad air, or strong UV. Bad air wins when both:
+/// it is what the hour shows (as on the clock).
 enum Hazard: Equatable {
-    case uv, smog, dust, uvSmog, uvDust
+    case uv, smog, dust
 
     init?(_ h: FeedHour) {
-        switch (h.strongSun == true, h.badAir) {
-        case (true, "smog"): self = .uvSmog
-        case (true, "dust"): self = .uvDust
-        case (true, _): self = .uv
-        case (false, "smog"): self = .smog
-        case (false, "dust"): self = .dust
-        default: return nil
+        switch h.badAir {
+        case "smog": self = .smog
+        case "dust": self = .dust
+        default:
+            guard h.strongSun == true else { return nil }
+            self = .uv
         }
     }
 
-    var sun: Bool { [.uv, .uvSmog, .uvDust].contains(self) }
-    var air: Hazard? { self == .uvSmog || self == .smog ? .smog : self == .uvDust || self == .dust ? .dust : nil }
+    var sun: Bool { self == .uv }
+    var air: Hazard? { self == .uv ? nil : self }
 }
 
 /// Deterministic scatter (the same picture on every render).
@@ -173,12 +172,7 @@ struct HazardBlock: View {
     let seed: Int
 
     var body: some View {
-        switch (hazard.sun, hazard.air) {
-        case (true, nil): BurnFill()
-        case (false, let a?): AirFill(dust: a == .dust, seed: seed)
-        case (true, let a?): ZStack { AirFill(dust: a == .dust, seed: seed); BurnFill() }
-        default: Color.clear
-        }
+        if let a = hazard.air { AirFill(dust: a == .dust, seed: seed) } else { BurnFill() }
     }
 }
 
