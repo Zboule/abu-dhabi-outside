@@ -1,0 +1,17 @@
+<!doctype html><html><head><style>
+html,body{margin:0;width:1024px;height:1024px;overflow:hidden}
+.bg{position:absolute;inset:0;background:
+  radial-gradient(circle at 50% 38%, rgba(255,150,40,.28), rgba(255,90,30,.08) 42%, transparent 62%),
+  radial-gradient(circle at 50% 50%, #1d1410, #07070a 72%)}
+.glow{position:absolute;left:112px;top:112px;width:800px;height:800px;border-radius:50%;
+  background:conic-gradient(from 0deg, #34d870 0deg, #9fe050 40deg, #ffd23a 75deg, #ff9a1e 110deg, #ff4a3a 145deg, #e8243a 180deg, #ff4a3a 215deg, #ff9a1e 250deg, #ffd23a 290deg, #9fe050 325deg, #34d870 360deg);
+  -webkit-mask:radial-gradient(circle, transparent 300px, #000 302px, #000 398px, transparent 400px);
+  filter:blur(38px);opacity:.75}
+.ring{position:absolute;left:112px;top:112px;width:800px;height:800px;border-radius:50%;
+  background:conic-gradient(from 0deg, #34d870 0deg, #9fe050 40deg, #ffd23a 75deg, #ff9a1e 110deg, #ff4a3a 145deg, #e8243a 180deg, #ff4a3a 215deg, #ff9a1e 250deg, #ffd23a 290deg, #9fe050 325deg, #34d870 360deg);
+  -webkit-mask:radial-gradient(circle, transparent 300px, #000 302px, #000 398px, transparent 400px)}
+.dot{position:absolute;width:118px;height:118px;border-radius:50%;background:#fff;
+  box-shadow:0 0 50px 14px rgba(255,255,255,.45), 0 0 0 14px rgba(10,8,8,.9);
+  left:calc(512px + 350px*cos(-120deg) - 59px);top:calc(512px + 350px*sin(-120deg) - 59px)}
+.sun{position:absolute;left:412px;top:412px;width:200px;height:200px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#ffe9a8,#ffb22e 55%,#ff7a18);box-shadow:0 0 90px 30px rgba(255,160,40,.35)}
+</style></head><body><div class="bg"></div><div class="glow"></div><div class="ring"></div><div class="dot"></div><div class='sun'></div></body></html>
