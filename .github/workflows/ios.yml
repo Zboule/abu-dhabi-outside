@@ -113,7 +113,10 @@ jobs:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: |
           mkdir -p "$RUNNER_TEMP/asc"
-          printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc/key.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc/AuthKey_${{ secrets.ASC_KEY_ID }}.p8"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc/AuthKey_${{ secrets.ASC_KEY_ID }}.p8" >> "$GITHUB_ENV"
+          ASC_KEY_PATH="$RUNNER_TEMP/asc/AuthKey_${{ secrets.ASC_KEY_ID }}.p8" ASC_KEY_ID="${{ secrets.ASC_KEY_ID }}" \
+            ASC_ISSUER_ID="${{ secrets.ASC_ISSUER_ID }}" node scripts/asc_check.mjs
 
       - name: Archive
         working-directory: ios/App
@@ -122,7 +125,7 @@ jobs:
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/App.xcarchive" \
             CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             -allowProvisioningUpdates \
-            -authenticationKeyPath "$RUNNER_TEMP/asc/key.p8" \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
             -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
             -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}" > archive.log 2>&1 \
             || { grep -E "error:|requires a provisioning|No profiles|App Group" archive.log | sort -u | head -40; tail -20 archive.log; exit 1; }
@@ -134,7 +137,7 @@ jobs:
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
             -exportOptionsPlist ExportOptions.plist -exportPath "$RUNNER_TEMP/export" \
             -allowProvisioningUpdates \
-            -authenticationKeyPath "$RUNNER_TEMP/asc/key.p8" \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
             -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
             -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}" > export.log 2>&1 \
             || { grep -iE "error|cannot be found|no suitable application records" export.log | sort -u | head -40; tail -20 export.log; exit 1; }
