@@ -167,43 +167,17 @@ struct AirFill: View {
     }
 }
 
-struct HazardMark: View {
-    let symbol: String
-    let size: CGFloat
-
-    var body: some View {
-        Image(systemName: symbol)
-            .font(.system(size: size, weight: .bold))
-            .symbolRenderingMode(.hierarchical)
-            .foregroundStyle(.white)
-            .shadow(color: .black.opacity(0.7), radius: 1.5)
-    }
-
-    static let burn = "sun.max.trianglebadge.exclamationmark.fill"
-    static let lungs = "lungs.fill"
-}
-
-/// A run of hazard hours as one block: the harm drawn across it, its symbol once in the middle.
+/// A run of hazard hours: only the harm, fire or gas, no block and no symbol.
 struct HazardBlock: View {
     let hazard: Hazard
     let seed: Int
 
     var body: some View {
-        GeometryReader { g in
-            let mark = min(g.size.width * 0.6, g.size.height * 0.34, 17)
-            switch (hazard.sun, hazard.air) {
-            case (true, nil):
-                BurnFill().overlay(HazardMark(symbol: HazardMark.burn, size: mark))
-            case (false, let a?):
-                AirFill(dust: a == .dust, seed: seed).overlay(HazardMark(symbol: HazardMark.lungs, size: mark))
-            case (true, let a?):
-                VStack(spacing: 0) {
-                    BurnFill().overlay(HazardMark(symbol: HazardMark.burn, size: mark * 0.8))
-                    AirFill(dust: a == .dust, seed: seed).overlay(HazardMark(symbol: HazardMark.lungs, size: mark * 0.8))
-                }
-            default:
-                Color.clear
-            }
+        switch (hazard.sun, hazard.air) {
+        case (true, nil): BurnFill()
+        case (false, let a?): AirFill(dust: a == .dust, seed: seed)
+        case (true, let a?): ZStack { AirFill(dust: a == .dust, seed: seed); BurnFill() }
+        default: Color.clear
         }
     }
 }
@@ -362,26 +336,24 @@ struct DayRing: View {
                     let span = 2 * Double.pi / 24
                     if let air = z.air {
                         var rng = Scatter(h.hour)
-                        for _ in 0..<10 {
+                        for _ in 0..<9 {
                             let a = a0 + span * Double(rng.next())
-                            let rad = r + (rng.next() - 0.5) * t
-                            gasPuff(&ctx, at: pt(rad, a), radius: t * (0.4 + rng.next() * 0.35),
+                            let rad = r + (rng.next() - 0.5) * t * 0.6
+                            gasPuff(&ctx, at: pt(rad, a), radius: t * (0.35 + rng.next() * 0.25),
                                     color: gasColor(dust: air == .dust, light: rng.next() > 0.5), alpha: 0.7)
                         }
                     }
                     if z.sun {
-                        for k in 0..<6 {
-                            let a = a0 + span * (Double(k) + 0.5) / 6
-                            let n = flicker(Double(h.hour * 6 + k) * 0.6)
-                            let hgt = t * (0.9 + 0.9 * n), half = span / 12
+                        for k in 0..<7 {
+                            let a = a0 + span * (Double(k) + 0.5) / 7
+                            let n = flicker(Double(h.hour * 7 + k) * 0.6)
+                            let hgt = t * (1.1 + 1.1 * n), half = span / 11
                             let b0 = r - t / 2
                             flameTongue(&ctx, base: pt(b0, a - half), pt(b0, a + half), tip: pt(b0 + hgt, a + (n - 0.5) * 0.05),
                                         c1: pt(b0 + hgt * 0.45, a - half * 0.9), c2: pt(b0 + hgt * 0.45, a + half * 0.9), q: 1)
                         }
                     }
                 }
-                HazardMark(symbol: z.air == nil ? HazardMark.burn : HazardMark.lungs, size: t * 0.45)
-                    .offset(at(h.hour, r))
             }
         } else {
             arc(h.hour, r, t, gap: 0.004).stroke(Palette.heat(h), lineWidth: t).frame(width: 2 * r, height: 2 * r)
