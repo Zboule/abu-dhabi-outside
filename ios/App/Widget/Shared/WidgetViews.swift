@@ -343,7 +343,8 @@ struct DayRing: View {
     /// filling it.
     @ViewBuilder
     private func ringHour(_ h: FeedHour, _ r: CGFloat, _ t: CGFloat, sink: Double, fade: Double) -> some View {
-        if let z = Hazard(h) {
+        // outside the day hours a hazard hour sinks into the night like any other: no effect
+        if let z = Hazard(h), s.inDay(h) {
             ZStack {
                 Canvas { ctx, size in
                     let c = CGPoint(x: size.width / 2, y: size.height / 2)
