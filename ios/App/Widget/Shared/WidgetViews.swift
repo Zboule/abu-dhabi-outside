@@ -283,8 +283,8 @@ struct DayStrip: View {
     }
 }
 
-/// Today as a ring, like the page's clock: midnight at the top, noon at the bottom; the
-/// going-out arc outside, the pool arc inside, hazard hours as fire or particles, a dot on now.
+/// Today as a ring, like the page's clock: noon at the top, midnight at the bottom (the day reads
+/// left to right across the top, as the strip); the going-out and pool arcs outside, hazard hours as fire or particles, a dot on now.
 /// Hours outside the day sink like the night, today's past a little less.
 struct DayRing: View {
     let s: Snapshot
@@ -293,10 +293,11 @@ struct DayRing: View {
     var body: some View {
         GeometryReader { g in
             let d = min(g.size.width, g.size.height)
-            let outW = d * 0.035, t = d * 0.13, poolW = d * 0.03, gap = d * 0.025
-            let rOut = d / 2 - outW / 2
-            let rRing = d / 2 - outW - gap - t / 2
-            let rPool = rRing - t / 2 - gap - poolW / 2
+            // outside in, as on the clock: the pool line, the going-out line, the ring
+            let outW = d * 0.03, t = d * 0.12, poolW = d * 0.026, gap = d * 0.02
+            let rPool = d / 2 - poolW / 2
+            let rOut = rPool - poolW / 2 - gap * 0.7 - outW / 2
+            let rRing = rOut - outW / 2 - gap - t / 2
             ZStack {
                 ForEach(s.wholeDay, id: \.time) { h in
                     let past = h.hour < s.nowHour
@@ -330,7 +331,7 @@ struct DayRing: View {
                             .lineLimit(1).minimumScaleFactor(0.6)
                     }
                 }
-                .frame(width: 2 * rPool * 0.9)
+                .frame(width: (2 * rRing - t) * 0.86)
             }
             .frame(width: d, height: d)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -347,7 +348,7 @@ struct DayRing: View {
                 Canvas { ctx, size in
                     let c = CGPoint(x: size.width / 2, y: size.height / 2)
                     let pt = { (rad: CGFloat, a: Double) in CGPoint(x: c.x + rad * cos(a), y: c.y + rad * sin(a)) }
-                    let a0 = Double(h.hour) / 24 * 2 * .pi - .pi / 2
+                    let a0 = Double(h.hour) / 24 * 2 * .pi + .pi / 2
                     let span = 2 * Double.pi / 24
                     if let air = z.air {
                         // the same particle mass across the band
@@ -382,11 +383,11 @@ struct DayRing: View {
     }
 
     private func arc(_ hour: Int, _ r: CGFloat, _ w: CGFloat, gap: Double) -> some Shape {
-        Circle().trim(from: Double(hour) / 24 + gap, to: Double(hour + 1) / 24 - gap).rotation(.degrees(-90))
+        Circle().trim(from: Double(hour) / 24 + gap, to: Double(hour + 1) / 24 - gap).rotation(.degrees(90))
     }
 
     private func at(_ hour: Int, _ r: CGFloat) -> CGSize {
-        let a = ((Double(hour) + 0.5) / 24 * 360 - 90) * .pi / 180
+        let a = ((Double(hour) + 0.5) / 24 * 360 + 90) * .pi / 180
         return CGSize(width: r * cos(a), height: r * sin(a))
     }
 }
