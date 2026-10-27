@@ -10,6 +10,7 @@
 // Drag around the clock to scrub an hour; tap the middle to come back to now.
 
 import { heatRGB, rgb, type HeatLimits } from '../lib/heat';
+import { sunTimes } from '../lib/sun';
 
 export interface ClockHour {
   hour: number;
@@ -41,7 +42,7 @@ export const CLOCK_HTML = `
 <h1 data-c="headline"></h1>
 <div class="sub" data-c="sub"></div>
 <div class="dial" data-c="dial">
-  <canvas data-c="cv" aria-label="The day as a clock. Colour is how hot it feels, flames mark strong sun, violet particles mark polluted air. Drag around it to see each hour."></canvas>
+  <canvas data-c="cv" aria-label="The day as a clock. Colour is how hot it feels, flames mark strong sun, violet particles mark polluted air. Noon at the top, midnight at the bottom. Drag around it to see each hour."></canvas>
   <div class="centre">
     <div class="c-when" data-c="cWhen"></div>
     <div class="c-word" data-c="cWord"></div>
@@ -193,7 +194,9 @@ export function mountClock(
   const cv = $("cv"), ctx = cv.getContext("2d");
   let S, DPR, CX, R_OUT, R_IN, R_MID, ringLayer;
   const TAU = Math.PI * 2;
-  const ang = deg => ((deg - 90) * Math.PI) / 180;
+  // noon at the top, midnight at the bottom: the day reads left to right across the top (6 AM
+  // on the left, 6 PM on the right), as the widget's strip
+  const ang = deg => ((deg + 90) * Math.PI) / 180;
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   function resize() {
@@ -238,9 +241,9 @@ export function mountClock(
     g.beginPath(); g.arc(CX, CX, R_OUT, 0, TAU); g.arc(CX, CX, R_IN, TAU, 0, true); g.fillStyle = sh; g.fill();
     g.restore();
 
-    // recommended windows: going out on a line just outside the ring (green, or yellow when only
-    // OK), pool time on a line just inside it (blue for good hours, pale blue for OK ones). The
-    // inside is free for it: the particles there only mark bad air, which pool time never has.
+    // recommended windows, outside the ring: going out on the line next to it (green, or yellow
+    // when only OK), pool time just beyond (blue for good hours, pale blue for OK ones). The inside
+    // of the dial is the sky.
     // Today's earlier windows stay faint and thin, so a missed morning still shows.
     const windows = (from, to, good, ok, colGood, colOk) => {
       const g1 = runs(from, good, to);
@@ -273,7 +276,8 @@ export function mountClock(
       }
     };
     line(out, R_OUT + 8);
-    line(swim, R_IN - 8);
+    line(swim, R_OUT + 16);
+    drawSky(g);
   }
 
   // cheap smooth noise: layered sines, enough for flicker
@@ -289,7 +293,7 @@ export function mountClock(
     for (let d = 0; d < 360; d += 2) {
       const u = at(sig.uv, d + 1, FX_HOLD) * pastFade(d + 1);
       if (u < 0.02) continue;
-      const r1 = R_OUT + 10 + 40 * u;
+      const r1 = R_OUT + 6 + 26 * u;
       const gr = ctx.createRadialGradient(CX, CX, R_IN, CX, CX, r1);
       gr.addColorStop(0, `rgba(255,110,10,${0.28 * u})`); gr.addColorStop(0.45, `rgba(255,120,20,${0.2 * u})`); gr.addColorStop(1, "rgba(255,60,0,0)");
       ctx.beginPath(); ctx.arc(CX, CX, r1, ang(d), ang(d + 2.2)); ctx.arc(CX, CX, R_IN, ang(d + 2.2), ang(d), true);
@@ -301,7 +305,7 @@ export function mountClock(
       if (u < 0.03) continue;
       const n = noise(d * 0.19, t), n2 = noise(d * 0.07 + 10, t * 0.7);
       const q = Math.sqrt(u); // gentle sun: shorter flames, but still bright, never muddy
-      const hgt = W * (0.8 + 0.4 * n) + S * (0.03 + 0.1 * u) * (0.35 + 0.95 * n);
+      const hgt = W * (0.75 + 0.35 * n) + S * (0.015 + 0.055 * u) * (0.35 + 0.95 * n);
       const half = 1.7 + 1.3 * u;
       const sway = (n2 - 0.5) * 6;
       const b0 = R_IN - 1, tipR = R_IN + hgt;
@@ -330,7 +334,7 @@ export function mountClock(
         for (let tries = 0; tries < 12; tries++) { const a = Math.random() * 360; if (Math.random() < at(sig.uv, a, FX_HOLD)) { s.a = a; s.u = at(sig.uv, a, FX_HOLD); break; } s.u = 0; }
       }
       if (!s.u) return;
-      const r = R_OUT + 8 + k * S * 0.12 * s.u;
+      const r = R_OUT + 8 + k * S * 0.08 * s.u;
       const a = s.a + s.drift * k * 4;
       ctx.fillStyle = `rgba(255,210,120,${(1 - k) * 0.9 * s.u})`;
       ctx.beginPath(); ctx.arc(CX + r * Math.cos(ang(a)), CX + r * Math.sin(ang(a)), 1.1, 0, TAU); ctx.fill();
@@ -366,6 +370,121 @@ export function mountClock(
   }
 
   let selected = home;
+  // ---------- the sky: the face split along the day's horizon ----------
+  // The inside of the dial is two skies cut by the line from sunrise to sunset (real times for
+  // the day, lib/sun.ts): above it the day, a filigree sun; below it the night, a crescent moon
+  // and stars. Fine gold and silver line work, kept faint where the centre's words sit.
+  const SUN = sunTimes(DATA.date);
+  function drawSky(g) {
+    const Rs = R_IN - 4;
+    const aRise = ang(SUN.rise * 15), aSet = ang(SUN.set * 15);
+    const at = (r, a) => [CX + r * Math.cos(a), CX + r * Math.sin(a)];
+    const gold = a => `rgba(255,206,120,${a})`, silver = a => `rgba(196,210,255,${a})`;
+
+    // where the horizon crosses the clock's centre line: each sky's icon sits on that line,
+    // halfway between the horizon and the dial's edge
+    const [hx0, hy0] = at(Rs, aRise), [hx1, hy1] = at(Rs, aSet);
+    const yH = hy0 + ((CX - hx0) * (hy1 - hy0)) / (hx1 - hx0 || 1e-6);
+    const sunY = (yH + (CX - Rs)) / 2, moonY = (yH + (CX + Rs)) / 2;
+
+    // day: the arc from sunrise to sunset over the top, closed by the horizon
+    g.save();
+    g.beginPath(); g.arc(CX, CX, Rs, aRise, aSet); g.closePath(); g.clip();
+    const day = g.createRadialGradient(CX, CX - Rs * 0.55, 0, CX, CX - Rs * 0.2, Rs * 1.1);
+    day.addColorStop(0, "rgba(255,170,60,0.20)"); day.addColorStop(0.55, "rgba(255,140,40,0.07)"); day.addColorStop(1, "rgba(255,120,30,0)");
+    g.fillStyle = day; g.fillRect(CX - Rs, CX - Rs, Rs * 2, Rs * 2);
+    // the sun, quiet, centred in the day sky
+    const sx = CX, sy = sunY + Rs * 0.05, R = Rs * 0.11;
+    const halo = g.createRadialGradient(sx, sy, 0, sx, sy, R * 2.2);
+    halo.addColorStop(0, "rgba(255,200,110,0.05)"); halo.addColorStop(1, "rgba(255,200,110,0)");
+    g.fillStyle = halo; g.beginPath(); g.arc(sx, sy, R * 2.2, 0, TAU); g.fill();
+    g.lineCap = "round";
+    g.strokeStyle = gold(0.25); g.lineWidth = 0.8;
+    g.beginPath(); g.arc(sx, sy, R * 0.42, 0, TAU); g.stroke();
+    g.strokeStyle = gold(0.15); g.lineWidth = 0.8;
+    g.beginPath(); g.arc(sx, sy, R * 0.3, 0, TAU); g.stroke();
+    for (let k = 0; k < 24; k++) { // a dotted ring between the disc and the rays
+      const a = (k / 24) * TAU; g.fillStyle = gold(0.2);
+      g.beginPath(); g.arc(sx + R * 0.52 * Math.cos(a), sy + R * 0.52 * Math.sin(a), 0.7, 0, TAU); g.fill();
+    }
+    for (let k = 0; k < 16; k++) { // rays: long straight ones, short wavy ones between
+      const a = (k / 16) * TAU, long = k % 2 === 0;
+      const [x0, y0] = [sx + R * 0.62 * Math.cos(a), sy + R * 0.62 * Math.sin(a)];
+      if (long) {
+        const [x1, y1] = [sx + R * 1.12 * Math.cos(a), sy + R * 1.12 * Math.sin(a)];
+        g.strokeStyle = gold(0.2); g.lineWidth = 0.8;
+        g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+        g.fillStyle = gold(0.23); g.beginPath(); g.arc(x1 + 2.2 * Math.cos(a), y1 + 2.2 * Math.sin(a), 0.9, 0, TAU); g.fill();
+      } else {
+        const len = R * 0.32, nx = -Math.sin(a), ny = Math.cos(a);
+        g.strokeStyle = gold(0.17); g.lineWidth = 0.8;
+        g.beginPath(); g.moveTo(x0, y0);
+        for (let q = 1; q <= 6; q++) {
+          const f = q / 6, w = Math.sin(f * Math.PI * 2) * 1.6;
+          g.lineTo(x0 + Math.cos(a) * len * f + nx * w, y0 + Math.sin(a) * len * f + ny * w);
+        }
+        g.stroke();
+      }
+    }
+    // a fine dotted arc following the sky's edge
+    for (let a = aRise + 0.06; a < aSet - 0.06; a += 0.045) {
+      const [x, y] = at(Rs * 0.9, a); g.fillStyle = gold(0.35); g.beginPath(); g.arc(x, y, 0.65, 0, TAU); g.fill();
+    }
+    g.restore();
+
+    // night: the arc from sunset to sunrise under the bottom
+    g.save();
+    g.beginPath(); g.arc(CX, CX, Rs, aSet, aRise + TAU); g.closePath(); g.clip();
+    const night = g.createRadialGradient(CX, CX + Rs * 0.55, 0, CX, CX + Rs * 0.2, Rs * 1.1);
+    night.addColorStop(0, "rgba(70,90,200,0.22)"); night.addColorStop(0.6, "rgba(50,60,160,0.08)"); night.addColorStop(1, "rgba(40,50,140,0)");
+    g.fillStyle = night; g.fillRect(CX - Rs, CX - Rs, Rs * 2, Rs * 2);
+    // stars: four-point sparkles and dots, away from the centre's words
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let k = 0; k < 46; k++) {
+      const a = aSet + rnd() * ((aRise + TAU) - aSet), r = Rs * (0.42 + rnd() * 0.5);
+      const [x, y] = at(r, a), size = 0.6 + rnd() * (k % 6 === 0 ? 2.4 : 1.1), al = 0.14 + rnd() * 0.22;
+      if (k % 6 === 0) {
+        g.strokeStyle = silver(al); g.lineWidth = 0.8;
+        g.beginPath(); g.moveTo(x - size, y); g.lineTo(x + size, y); g.moveTo(x, y - size); g.lineTo(x, y + size); g.stroke();
+      }
+      g.fillStyle = silver(al); g.beginPath(); g.arc(x, y, k % 6 === 0 ? 0.9 : size * 0.5, 0, TAU); g.fill();
+    }
+    // the crescent moon, quiet, centred in the night sky
+    const mx = CX, my = moonY, M = Rs * 0.095;
+    const glow = g.createRadialGradient(mx, my, 0, mx, my, M * 2.4);
+    glow.addColorStop(0, "rgba(180,200,255,0.04)"); glow.addColorStop(1, "rgba(180,200,255,0)");
+    g.fillStyle = glow; g.beginPath(); g.arc(mx, my, M * 2.4, 0, TAU); g.fill();
+    // a crescent: the moon's lit edge, then back along the edge of the shadow disc inside it
+    const crescent = (m) => {
+      const bx = mx + m * 0.5, by = my - m * 0.22, rb = m * 0.9; // the shadow disc
+      const d = Math.hypot(bx - mx, by - my), phi = Math.atan2(by - my, bx - mx);
+      const al = Math.acos((d * d + m * m - rb * rb) / (2 * d * m));
+      const p1 = [mx + m * Math.cos(phi + al), my + m * Math.sin(phi + al)];
+      const p2 = [mx + m * Math.cos(phi - al), my + m * Math.sin(phi - al)];
+      g.beginPath();
+      g.moveTo(p1[0], p1[1]);
+      g.arc(mx, my, m, phi + al, phi - al + TAU);
+      g.arc(bx, by, rb, Math.atan2(p2[1] - by, p2[0] - bx), Math.atan2(p1[1] - by, p1[0] - bx), true);
+      g.closePath();
+    };
+    g.fillStyle = silver(0.05); crescent(M); g.fill();
+    g.strokeStyle = silver(0.28); g.lineWidth = 0.8; crescent(M); g.stroke();
+    g.strokeStyle = silver(0.12); g.lineWidth = 0.6; crescent(M * 0.78); g.stroke();
+    for (let a = aSet + 0.06; a < aRise + TAU - 0.06; a += 0.045) {
+      const [x, y] = at(Rs * 0.9, a); g.fillStyle = silver(0.28); g.beginPath(); g.arc(x, y, 0.6, 0, TAU); g.fill();
+    }
+    g.restore();
+
+    // the horizon, gold on the day side fading to silver, a small mark at sunrise and sunset
+    const [rx, ry] = at(Rs, aRise), [tx, ty] = at(Rs, aSet);
+    const hz = g.createLinearGradient(rx, ry, tx, ty);
+    hz.addColorStop(0, gold(0.55)); hz.addColorStop(0.28, gold(0)); hz.addColorStop(0.72, gold(0)); hz.addColorStop(1, gold(0.55));
+    g.strokeStyle = hz; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(rx, ry); g.lineTo(tx, ty); g.stroke();
+    [[rx, ry], [tx, ty]].forEach(([x, y]) => { g.fillStyle = gold(0.8); g.beginPath(); g.arc(x, y, 2, 0, TAU); g.fill(); });
+  }
+
   function drawMarkers(t) {
     // the time of day: ticks across the ring (every hour, stronger every 6) and clear labels,
     // drawn on top of the particles and flames so they always read
@@ -457,8 +576,8 @@ export function mountClock(
   function hourAt(e) {
     const b = cv.getBoundingClientRect();
     const x = e.clientX - b.left - b.width / 2, y = e.clientY - b.top - b.height / 2;
-    let deg = (Math.atan2(y, x) * 180) / Math.PI + 90;
-    if (deg < 0) deg += 360;
+    let deg = (Math.atan2(y, x) * 180) / Math.PI - 90;
+    deg = ((deg % 360) + 360) % 360;
     return { h: Math.min(23, Math.floor(deg / 15)), dist: Math.hypot(x, y) };
   }
   let scrub = false;
