@@ -13,6 +13,27 @@ final class WidgetSnapshots: XCTestCase {
         return try XCTUnwrap(Feed.decode(Data(contentsOf: url)))
     }
 
+    /// The sample feed with made-up bad air, to render every hazard: smog 15-16, dust 17-18,
+    /// and smog on 11 (strong UV there too, so both).
+    private func hazardFeed() throws -> Feed {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "sample-feed", withExtension: "json"))
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        var profiles = try XCTUnwrap(json["profiles"] as? [String: Any])
+        for name in ["kids", "adults"] {
+            var p = try XCTUnwrap(profiles[name] as? [String: Any])
+            var hours = try XCTUnwrap(p["hours"] as? [[String: Any]])
+            for (i, var h) in hours.enumerated() where i < 24 {
+                if [11, 15, 16].contains(i) { h["badAir"] = "smog"; h["air"] = "bad"; h["verdict"] = "bad" }
+                if [17, 18].contains(i) { h["badAir"] = "dust"; h["air"] = "bad"; h["verdict"] = "bad" }
+                hours[i] = h
+            }
+            p["hours"] = hours
+            profiles[name] = p
+        }
+        json["profiles"] = profiles
+        return try XCTUnwrap(Feed.decode(JSONSerialization.data(withJSONObject: json)))
+    }
+
     private func at(_ feed: Feed, hour: Int) -> Date {
         let day = feed.profiles["kids"]!.hours[0].day
         return Dubai.date(of: "\(day)T\(String(format: "%02d", hour)):20+04:00")!
@@ -66,9 +87,11 @@ final class WidgetSnapshots: XCTestCase {
             ("adults-10h", adults, 10),
             ("day7-21-23h", day, 23),
         ]
-        for (name, settings, hour) in cases {
+        let hazards = try hazardFeed()
+        for (name, settings, hour) in cases + [("hazards-14h", WidgetSettings(), 14)] {
             // the feed is from the past: render as if it were fresh
-            var s = Snapshot.make(feed: feed, settings: settings, at: at(feed, hour: hour))
+            let f = name.hasPrefix("hazards") ? hazards : feed
+            var s = Snapshot.make(feed: f, settings: settings, at: at(f, hour: hour))
             s = Snapshot(now: s.now, phase: s.phase, today: s.today, wholeDay: s.wholeDay, nowHour: s.nowHour, window: s.window,
                          inWindow: s.inWindow, windowDay: s.windowDay, settings: s.settings, stale: false, updated: s.updated)
             for scheme in [ColorScheme.light, .dark] {

@@ -1,9 +1,9 @@
 import SwiftUI
 
 // The widget faces, shared with the snapshot tests (WidgetSnapshots). They speak the page's clock:
-// colour is how hot it feels, a sun marks strong UV (the clock's flames: on a widget a flame reads
-// as "hot", which the colour already says), a violet cloud smoggy air and a sandy one
-// dust, a line outside marks the good time to go out (green good, yellow OK), a blue line inside
+// colour is how hot it feels, except on hours to avoid whatever the heat: strong UV turns to
+// yellow and black caution stripes with a sun (the clock's flames), smoggy air to violet and dust
+// to sand-brown with a cloud (the clock's gas and haze); a line outside marks the good time to go out (green good, yellow OK), a blue line inside
 // pool time. Colours: contract/tokens.json and src/outdoor/clock.ts.
 
 extension Color {
@@ -15,8 +15,9 @@ extension Color {
 
 enum Palette {
     static let pool = (good: Color(hex: "#40c4ff"), ok: Color(hex: "#9bdcff"))
-    static let smog = Color(hex: "#b98cff")
-    static let dust = Color(hex: "#e2b872")
+    static let smog = Color(hex: "#8f5cff")
+    static let dust = Color(hex: "#a7794a")
+    static let uv = (stripe: Color(hex: "#ffd60a"), gap: Color(hex: "#1c1c1e"))
     static let sun = Color.white
     static let noData = Color(hex: "#3c3c43")
 
@@ -44,22 +45,68 @@ extension Level {
     }
 }
 
-/// Sun and cloud marks for one hour, as the clock's flames and gas.
-struct HourMarks: View {
-    let h: FeedHour
-    let size: CGFloat
+/// Why an hour is to avoid whatever the heat: strong UV, bad air, or both. Those hours drop the
+/// heat colour (it no longer matters) for a fill nothing else uses.
+enum Hazard {
+    case uv, air(Color), both(Color)
 
+    init?(_ h: FeedHour) {
+        let air = Palette.air(h.badAir)
+        switch (h.strongSun == true, air) {
+        case (true, let a?): self = .both(a)
+        case (true, nil): self = .uv
+        case (false, let a?): self = .air(a)
+        default: return nil
+        }
+    }
+}
+
+/// Caution stripes for strong UV: diagonal yellow bands on near-black.
+struct UVStripes: View {
     var body: some View {
-        VStack(spacing: 0) {
-            if h.strongSun == true {
-                Image(systemName: "sun.max.fill").foregroundStyle(Palette.sun)
-            }
-            if let c = Palette.air(h.badAir) {
-                Image(systemName: "cloud.fill").foregroundStyle(c)
+        Canvas { ctx, size in
+            ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Palette.uv.gap))
+            let w: CGFloat = 4
+            var x = -size.height
+            while x < size.width {
+                var p = Path()
+                p.move(to: CGPoint(x: x, y: size.height))
+                p.addLine(to: CGPoint(x: x + w, y: size.height))
+                p.addLine(to: CGPoint(x: x + w + size.height, y: 0))
+                p.addLine(to: CGPoint(x: x + size.height, y: 0))
+                p.closeSubpath()
+                ctx.fill(p, with: .color(Palette.uv.stripe))
+                x += w * 2
             }
         }
-        .font(.system(size: size, weight: .bold))
-        .shadow(color: .black.opacity(0.5), radius: 1.2)
+    }
+}
+
+/// One hour of the strip: its heat colour, or its hazard fill with the hazard's mark.
+struct HourFill: View {
+    let h: FeedHour
+
+    var body: some View {
+        switch Hazard(h) {
+        case .uv?:
+            UVStripes().overlay(mark("sun.max.fill"))
+        case .air(let c)?:
+            c.overlay(mark("cloud.fill"))
+        case .both(let c)?:
+            VStack(spacing: 0) {
+                UVStripes().overlay(mark("sun.max.fill"))
+                c.overlay(mark("cloud.fill"))
+            }
+        case nil:
+            Palette.heat(h)
+        }
+    }
+
+    private func mark(_ symbol: String) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.6), radius: 1.5)
     }
 }
 
@@ -76,7 +123,7 @@ struct Stale: View {
 }
 
 /// Today's day hours as a strip, the clock unrolled: the going-out line on top, the hours
-/// coloured by heat with their suns and clouds, the pool line under, now outlined. Past hours
+/// coloured by heat, or by their hazard, the pool line under, now outlined. Past hours
 /// keep their colour, as on the clock (faded, a red hour reads as a cooler pink one).
 struct DayStrip: View {
     let s: Snapshot
@@ -86,9 +133,8 @@ struct DayStrip: View {
             ForEach(s.today, id: \.time) { h in
                 VStack(spacing: 2) {
                     Capsule().fill(s.outLevel(h)?.color ?? .clear).frame(height: 4)
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Palette.heat(h))
-                        .overlay(HourMarks(h: h, size: 12))
+                    HourFill(h: h)
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
                         .overlay {
                             if h.hour == s.nowHour {
                                 RoundedRectangle(cornerRadius: 3).strokeBorder(Color.primary, lineWidth: 2)
@@ -109,7 +155,7 @@ struct DayStrip: View {
 }
 
 /// Today as a ring, like the page's clock: midnight at the top, noon at the bottom; the
-/// going-out arc outside, the pool arc inside, suns and clouds on the hours, a dot on now.
+/// going-out arc outside, the pool arc inside, hazard hours striped or tinted, a dot on now.
 struct DayRing: View {
     let s: Snapshot
 
@@ -123,8 +169,7 @@ struct DayRing: View {
             ZStack {
                 ForEach(s.wholeDay, id: \.time) { h in
                     let fade = s.inDay(h) ? 1.0 : 0.15
-                    arc(h.hour, rRing, t, gap: 0.004).stroke(Palette.heat(h), lineWidth: t)
-                        .frame(width: 2 * rRing, height: 2 * rRing).opacity(fade)
+                    ringHour(h, rRing, t).opacity(fade)
                     if let o = s.outLevel(h) {
                         arc(h.hour, rOut, outW, gap: 0).stroke(o.color, style: StrokeStyle(lineWidth: outW, lineCap: .round))
                             .frame(width: 2 * rOut, height: 2 * rOut).opacity(fade)
@@ -132,9 +177,6 @@ struct DayRing: View {
                     if let p = s.poolLevel(h) {
                         arc(h.hour, rPool, poolW, gap: 0).stroke(p == .good ? Palette.pool.good : Palette.pool.ok, lineWidth: poolW)
                             .frame(width: 2 * rPool, height: 2 * rPool).opacity(fade)
-                    }
-                    if s.inDay(h), h.strongSun == true || h.badAir != nil {
-                        HourMarks(h: h, size: t * 0.42).offset(at(h.hour, rRing)).opacity(fade)
                     }
                 }
                 if s.wholeDay.contains(where: { $0.hour == s.nowHour }) {
@@ -159,6 +201,33 @@ struct DayRing: View {
             }
             .frame(width: d, height: d)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    /// One hour of the ring: its heat colour, or, for a hazard, caution bands (strong UV: yellow
+    /// and black across the ring) and the air colour (both: UV on the outer half, air inside).
+    @ViewBuilder
+    private func ringHour(_ h: FeedHour, _ r: CGFloat, _ t: CGFloat) -> some View {
+        let seg = arc(h.hour, r, t, gap: 0.004)
+        let uv = ZStack {
+            seg.stroke(Palette.uv.stripe, lineWidth: t)
+            seg.stroke(Palette.uv.gap, style: StrokeStyle(lineWidth: t, dash: [2.5, 2.5]))
+        }
+        Group {
+            switch Hazard(h) {
+            case .uv?: uv.frame(width: 2 * r, height: 2 * r)
+            case .air(let c)?: seg.stroke(c, lineWidth: t).frame(width: 2 * r, height: 2 * r)
+            case .both(let c)?:
+                ZStack {
+                    ZStack {
+                        seg.stroke(Palette.uv.stripe, lineWidth: t / 2)
+                        seg.stroke(Palette.uv.gap, style: StrokeStyle(lineWidth: t / 2, dash: [2.5, 2.5]))
+                    }
+                    .frame(width: 2 * (r + t / 4), height: 2 * (r + t / 4))
+                    seg.stroke(c, lineWidth: t / 2).frame(width: 2 * (r - t / 4), height: 2 * (r - t / 4))
+                }
+            case nil: seg.stroke(Palette.heat(h), lineWidth: t).frame(width: 2 * r, height: 2 * r)
+            }
         }
     }
 
