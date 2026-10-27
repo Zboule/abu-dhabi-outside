@@ -27,14 +27,17 @@ for (const w of WANT) {
   const bundle = ids.data.find((b) => b.attributes.identifier === w.bundle);
   if (!bundle) throw new Error(`bundle ID ${w.bundle} is not registered`);
 
-  const found = await asc('GET', `/v1/profiles?filter[name]=${encodeURIComponent(w.name)}&limit=10`);
-  let profile = found.data.find((p) => p.attributes.name === w.name && p.attributes.profileState === 'ACTIVE');
   // the plist inside the signed profile is plain text: it must carry the App Group
   const hasGroup = (p) => Buffer.from(p.attributes.profileContent, 'base64').toString('latin1').includes(GROUP);
-  if (profile && !hasGroup(profile)) {
-    console.log(`${w.name}: made before the App Group was assigned, remaking it`);
-    await asc('DELETE', `/v1/profiles/${profile.id}`);
-    profile = null;
+  const found = await asc('GET', `/v1/profiles?filter[name]=${encodeURIComponent(w.name)}&limit=10`);
+  let profile = null;
+  for (const p of found.data.filter((p) => p.attributes.name === w.name)) {
+    if (!profile && p.attributes.profileState === 'ACTIVE' && hasGroup(p)) profile = p;
+    else {
+      // invalid, made before the App Group was assigned, or a duplicate: names must be unique
+      console.log(`${w.name}: removing a stale profile (${p.attributes.profileState})`);
+      await asc('DELETE', `/v1/profiles/${p.id}`);
+    }
   }
   if (!profile) {
     const made = await asc('POST', '/v1/profiles', {
