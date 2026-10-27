@@ -40,13 +40,11 @@ export interface ClockHour {
 export const CLOCK_HTML = `
 <div class="mood" data-c="mood"></div>
 <h1 data-c="headline"></h1>
-<div class="sub" data-c="sub"></div>
 <div class="dial" data-c="dial">
   <canvas data-c="cv" aria-label="The day as a clock. Colour is how hot it feels, flames mark strong sun, violet particles mark polluted air. Noon at the top, midnight at the bottom. Drag around it to see each hour."></canvas>
   <div class="centre">
     <div class="c-when" data-c="cWhen"></div>
     <div class="c-word" data-c="cWord"></div>
-    <div class="c-feels" data-c="cFeels"></div>
   </div>
 </div>
 <section class="why" data-c="why"></section>`;
@@ -192,7 +190,7 @@ export function mountClock(
 
   // ---------- canvas ----------
   const cv = $("cv"), ctx = cv.getContext("2d");
-  let S, DPR, CX, R_OUT, R_IN, R_MID, ringLayer;
+  let S, DPR, CX, R_OUT, R_IN, R_MID, R_C, ringLayer;
   const TAU = Math.PI * 2;
   // noon at the top, midnight at the bottom: the day reads left to right across the top (6 AM
   // on the left, 6 PM on the right), as the widget's strip
@@ -206,6 +204,7 @@ export function mountClock(
     cv.width = Math.round(S * DPR); cv.height = Math.round(S * DPR);
     CX = S / 2;
     R_OUT = S * 0.372; R_IN = R_OUT - S * 0.072; R_MID = (R_OUT + R_IN) / 2;
+    R_C = S * 0.185; // the centre circle the selected hour's words sit in
     buildRing();
   }
 
@@ -381,11 +380,9 @@ export function mountClock(
     const at = (r, a) => [CX + r * Math.cos(a), CX + r * Math.sin(a)];
     const gold = a => `rgba(255,206,120,${a})`, silver = a => `rgba(196,210,255,${a})`;
 
-    // where the horizon crosses the clock's centre line: each sky's icon sits on that line,
-    // halfway between the horizon and the dial's edge
-    const [hx0, hy0] = at(Rs, aRise), [hx1, hy1] = at(Rs, aSet);
-    const yH = hy0 + ((CX - hx0) * (hy1 - hy0)) / (hx1 - hx0 || 1e-6);
-    const sunY = (yH + (CX - Rs)) / 2, moonY = (yH + (CX + Rs)) / 2;
+    // the sun and the moon sit on the centre line, in the band between the centre circle and
+    // the ring: at the top (noon) and the bottom (midnight), in place of those words
+    const sunY = CX - (R_C + Rs) / 2, moonY = CX + (R_C + Rs) / 2;
 
     // day: the arc from sunrise to sunset over the top, closed by the horizon
     g.save();
@@ -394,7 +391,7 @@ export function mountClock(
     day.addColorStop(0, "rgba(255,170,60,0.20)"); day.addColorStop(0.55, "rgba(255,140,40,0.07)"); day.addColorStop(1, "rgba(255,120,30,0)");
     g.fillStyle = day; g.fillRect(CX - Rs, CX - Rs, Rs * 2, Rs * 2);
     // the sun, quiet, centred in the day sky
-    const sx = CX, sy = sunY + Rs * 0.05, R = Rs * 0.11;
+    const sx = CX, sy = sunY, R = Rs * 0.1;
     const halo = g.createRadialGradient(sx, sy, 0, sx, sy, R * 2.2);
     halo.addColorStop(0, "rgba(255,200,110,0.05)"); halo.addColorStop(1, "rgba(255,200,110,0)");
     g.fillStyle = halo; g.beginPath(); g.arc(sx, sy, R * 2.2, 0, TAU); g.fill();
@@ -442,7 +439,7 @@ export function mountClock(
     let seed = 7;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     for (let k = 0; k < 46; k++) {
-      const a = aSet + rnd() * ((aRise + TAU) - aSet), r = Rs * (0.42 + rnd() * 0.5);
+      const a = aSet + rnd() * ((aRise + TAU) - aSet), r = R_C + 6 + rnd() * (Rs - R_C - 10);
       const [x, y] = at(r, a), size = 0.6 + rnd() * (k % 6 === 0 ? 2.4 : 1.1), al = 0.14 + rnd() * 0.22;
       if (k % 6 === 0) {
         g.strokeStyle = silver(al); g.lineWidth = 0.8;
@@ -451,7 +448,7 @@ export function mountClock(
       g.fillStyle = silver(al); g.beginPath(); g.arc(x, y, k % 6 === 0 ? 0.9 : size * 0.5, 0, TAU); g.fill();
     }
     // the crescent moon, quiet, centred in the night sky
-    const mx = CX, my = moonY, M = Rs * 0.095;
+    const mx = CX, my = moonY, M = Rs * 0.085;
     const glow = g.createRadialGradient(mx, my, 0, mx, my, M * 2.4);
     glow.addColorStop(0, "rgba(180,200,255,0.04)"); glow.addColorStop(1, "rgba(180,200,255,0)");
     g.fillStyle = glow; g.beginPath(); g.arc(mx, my, M * 2.4, 0, TAU); g.fill();
@@ -479,9 +476,12 @@ export function mountClock(
     // the horizon, gold on the day side fading to silver, a small mark at sunrise and sunset
     const [rx, ry] = at(Rs, aRise), [tx, ty] = at(Rs, aSet);
     const hz = g.createLinearGradient(rx, ry, tx, ty);
-    hz.addColorStop(0, gold(0.55)); hz.addColorStop(0.28, gold(0)); hz.addColorStop(0.72, gold(0)); hz.addColorStop(1, gold(0.55));
+    hz.addColorStop(0, gold(0.55)); hz.addColorStop(0.5, gold(0.25)); hz.addColorStop(1, gold(0.55));
+    g.save();
+    g.beginPath(); g.rect(0, 0, S, S); g.arc(CX, CX, R_C + 3, 0, TAU, true); g.clip("evenodd");
     g.strokeStyle = hz; g.lineWidth = 1;
     g.beginPath(); g.moveTo(rx, ry); g.lineTo(tx, ty); g.stroke();
+    g.restore();
     [[rx, ry], [tx, ty]].forEach(([x, y]) => { g.fillStyle = gold(0.8); g.beginPath(); g.arc(x, y, 2, 0, TAU); g.fill(); });
   }
 
@@ -497,17 +497,39 @@ export function mountClock(
       ctx.lineWidth = major ? 2.5 : 1.5;
       ctx.beginPath(); ctx.moveTo(CX + r0 * c, CX + r0 * s2); ctx.lineTo(CX + r1 * c, CX + r1 * s2); ctx.stroke();
     }
-    ctx.font = `700 ${Math.max(11, Math.round(S * 0.034))}px -apple-system, system-ui`;
+    ctx.font = `700 ${Math.max(10, Math.round(S * 0.029))}px -apple-system, system-ui`;
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.shadowColor = "rgba(0,0,0,.9)"; ctx.shadowBlur = 6;
     ctx.fillStyle = "rgba(255,255,255,.82)";
-    const rl = R_IN - S * 0.075;
-    [[0, "Midnight"], [6, "6 AM"], [12, "Noon"], [18, "6 PM"]].forEach(([h, txt]) => {
+    const rl = R_IN - S * 0.05;
+    // noon and midnight are the sun and the moon; 6 AM and 6 PM sit by the horizon's ends
+    [[6, "6 AM"], [18, "6 PM"]].forEach(([h, txt]) => {
       const a = ang(h * 15);
       ctx.fillText(txt, CX + rl * Math.cos(a), CX + rl * Math.sin(a));
     });
     ctx.restore();
 
+    // the centre and its link to the selected hour, made of the sky's own material: a soft shade
+    // behind the words, and a beam, the sky brightening in a soft wedge from the centre to the
+    // hour (gold for a daylight hour, silver for a night one), as if the hour were lit from there
+    {
+      const a = ang(selected * 15 + 7.5);
+      const h = selected + 0.5, day = h > SUN.rise && h < SUN.set;
+      const tone = day ? [255, 206, 120] : [196, 210, 255];
+      const c = al => `rgba(${tone[0]},${tone[1]},${tone[2]},${al})`;
+      const P = r => [CX + r * Math.cos(a), CX + r * Math.sin(a)];
+      ctx.save();
+      const shade = ctx.createRadialGradient(CX, CX, 0, CX, CX, R_C * 1.25);
+      shade.addColorStop(0, "rgba(6,6,10,0.62)"); shade.addColorStop(0.7, "rgba(6,6,10,0.45)"); shade.addColorStop(1, "rgba(6,6,10,0)");
+      ctx.fillStyle = shade; ctx.beginPath(); ctx.arc(CX, CX, R_C * 1.25, 0, TAU); ctx.fill();
+      ctx.filter = `blur(${Math.round(S * 0.012)}px)`;
+      const [b0x, b0y] = P(R_C * 0.6), [b1x, b1y] = P(R_IN);
+      const beam = ctx.createLinearGradient(b0x, b0y, b1x, b1y);
+      beam.addColorStop(0, c(0)); beam.addColorStop(0.35, c(0.16)); beam.addColorStop(1, c(0.32));
+      ctx.fillStyle = beam;
+      ctx.beginPath(); ctx.moveTo(b0x, b0y); ctx.arc(CX, CX, R_IN - 2, a - 0.15, a + 0.15); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
     // the selected hour: a bright outline around it, the now hour included
     {
       ctx.save();
@@ -569,7 +591,6 @@ export function mountClock(
     $("cWord").textContent = WORD[h.verdict] || "No data";
     $("cWord").style.color = COLOR[h.verdict] || "#fff";
     // like the rings design: the selected hour explains itself, in the centre and below
-    $("cFeels").textContent = reasonOf(h);
     renderWhy(i);
     if (reduce) frame(performance.now());
   }
@@ -668,7 +689,6 @@ export function mountClock(
   // ---------- render ----------
   const H = headline();
   $("headline").innerHTML = `${H.a} <span class="when" style="color:${H.col}">${H.b}</span>`;
-  $("sub").textContent = H.sub;
   $("mood").style.setProperty("--mood", H.mood + "55");
   $("mood").style.setProperty("--mood2", rgb(heatRGB(hours[now].heatFeels ?? hours[now].feels, DATA.heat), 0.25));
 
