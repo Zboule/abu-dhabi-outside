@@ -144,7 +144,8 @@ func gasPuff(_ ctx: inout GraphicsContext, at c: CGPoint, radius r: CGFloat, col
         center: c, startRadius: 0, endRadius: r))
 }
 
-/// Lung-wrecking air, the clock's gas frozen: no block, just violet smog or sandy haze billowing.
+/// Lung-wrecking air, the clock's gas frozen: no block, a thick cloud with volume, a dark core
+/// (deep violet smog, umber dust), the gas colours around it, light wisps on top.
 struct AirFill: View {
     let dust: Bool
     let seed: Int
@@ -153,13 +154,18 @@ struct AirFill: View {
         Canvas { ctx, size in
             let w = size.width, h = size.height
             var rng = Scatter(seed + (dust ? 100 : 0))
-            // big slow haze, then smaller denser wisps over it
-            for layer in 0..<2 {
-                let count = layer == 0 ? max(5, Int(w * h / 70)) : max(8, Int(w * h / 35))
-                for _ in 0..<count {
-                    let r = (layer == 0 ? 0.45 + rng.next() * 0.35 : 0.2 + rng.next() * 0.25) * min(w * 1.2, h) + 2
-                    let c = CGPoint(x: rng.next() * w, y: h * 0.12 + rng.next() * h * 0.8)
-                    gasPuff(&ctx, at: c, radius: r, color: gasColor(dust: dust, light: rng.next() > 0.5), alpha: layer == 0 ? 0.55 : 0.75)
+            let core = dust ? Color(hex: "#7a5228") : Color(hex: "#4a1fa8")
+            let layers: [(count: Int, size: ClosedRange<CGFloat>, alpha: Double)] = [
+                (max(5, Int(w * h / 80)), 0.45...0.75, 0.8),  // dark core
+                (max(8, Int(w * h / 40)), 0.3...0.55, 0.8),   // the gas
+                (max(6, Int(w * h / 60)), 0.15...0.3, 0.7),   // wisps
+            ]
+            for (i, l) in layers.enumerated() {
+                for _ in 0..<l.count {
+                    let r = (l.size.lowerBound + rng.next() * (l.size.upperBound - l.size.lowerBound)) * min(w * 1.2, h) + 2
+                    let c = CGPoint(x: rng.next() * w, y: h * (i == 0 ? 0.3 : 0.12) + rng.next() * h * (i == 0 ? 0.55 : 0.8))
+                    let color = i == 0 ? core : i == 1 ? gasColor(dust: dust, light: rng.next() > 0.6) : gasColor(dust: dust, light: true)
+                    gasPuff(&ctx, at: c, radius: r, color: color, alpha: l.alpha)
                 }
             }
         }
@@ -330,11 +336,12 @@ struct DayRing: View {
                     let span = 2 * Double.pi / 24
                     if let air = z.air {
                         var rng = Scatter(h.hour)
-                        for _ in 0..<9 {
+                        let core = air == .dust ? Color(hex: "#7a5228") : Color(hex: "#4a1fa8")
+                        for i in 0..<12 {
                             let a = a0 + span * Double(rng.next())
                             let rad = r + (rng.next() - 0.5) * t * 0.6
-                            gasPuff(&ctx, at: pt(rad, a), radius: t * (0.35 + rng.next() * 0.25),
-                                    color: gasColor(dust: air == .dust, light: rng.next() > 0.5), alpha: 0.7)
+                            gasPuff(&ctx, at: pt(rad, a), radius: t * (i < 4 ? 0.5 : 0.3 + rng.next() * 0.25),
+                                    color: i < 4 ? core : gasColor(dust: air == .dust, light: rng.next() > 0.5), alpha: 0.85)
                         }
                     }
                     if z.sun {
