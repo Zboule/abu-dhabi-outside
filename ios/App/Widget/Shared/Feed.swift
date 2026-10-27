@@ -205,7 +205,7 @@ struct Snapshot {
     /// The ring's second line, shorter: when it turns OK ("OK 18:00", "Tmrw 07:00").
     var ringLine: String {
         guard let w = window else { return "" }
-        if inWindow { return "until \(until(w.to))" }
+        if inWindow { return w.to % 24 == 0 ? "till 00:00" : "till \(hh(w.to))" }
         let word = w.level == .good ? "Good" : "OK"
         if windowDay.isEmpty { return "\(word) \(hh(w.from))" }
         return windowDay == "Tomorrow" ? "Tmrw \(hh(w.from))" : "\(windowDay.prefix(3)) \(hh(w.from))"

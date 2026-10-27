@@ -75,7 +75,8 @@ struct Stale: View {
 }
 
 /// Today's day hours as a strip, the clock unrolled: the going-out line on top, the hours
-/// coloured by heat with their flames and clouds, the pool line under, past hours faded.
+/// coloured by heat with their flames and clouds, the pool line under, now outlined. Past hours
+/// keep their colour, as on the clock (faded, a red hour reads as a cooler pink one).
 struct DayStrip: View {
     let s: Snapshot
 
@@ -101,7 +102,6 @@ struct DayStrip: View {
                         .foregroundStyle(.secondary)
                         .fixedSize()
                 }
-                .opacity(h.hour < s.nowHour && s.phase != .beforeDay ? 0.4 : 1)
             }
         }
     }
@@ -121,7 +121,7 @@ struct DayRing: View {
             let rPool = rRing - t / 2 - gap - poolW / 2
             ZStack {
                 ForEach(s.wholeDay, id: \.time) { h in
-                    let fade = !s.inDay(h) ? 0.15 : h.hour < s.nowHour ? 0.4 : 1
+                    let fade = s.inDay(h) ? 1.0 : 0.15
                     arc(h.hour, rRing, t, gap: 0.004).stroke(Palette.heat(h), lineWidth: t)
                         .frame(width: 2 * rRing, height: 2 * rRing).opacity(fade)
                     if let o = s.outLevel(h) {
@@ -150,10 +150,11 @@ struct DayRing: View {
                         .minimumScaleFactor(0.4)
                         .lineLimit(1)
                     if !s.ringLine.isEmpty {
-                        Text(s.ringLine).font(.system(size: d * 0.09, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
+                        Text(s.ringLine).font(.system(size: d * 0.085, weight: .medium)).foregroundStyle(.secondary)
+                            .lineLimit(1).minimumScaleFactor(0.6)
                     }
                 }
-                .frame(width: 2 * rPool * 0.78)
+                .frame(width: 2 * rPool * 0.9)
             }
             .frame(width: d, height: d)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
