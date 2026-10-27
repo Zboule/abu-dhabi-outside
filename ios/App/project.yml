@@ -16,6 +16,7 @@ settings:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "1"
     CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: MKB8VRU5Y9
 targets:
   App:
     type: application

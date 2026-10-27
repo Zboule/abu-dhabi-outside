@@ -1,6 +1,9 @@
-# The iOS app: build it, render the widgets and screenshot the app on a simulator.
-# (Signing and TestFlight come later, with the App Store Connect key.)
+# The iOS app: build it, render the widgets and screenshot the app on a simulator, then (on main)
+# archive, sign and upload it to TestFlight.
 # Artifacts: "ios-screens", PNGs of every widget size and of the app.
+# Signing is Xcode's automatic signing driven by an App Store Connect API key (secrets ASC_KEY_P8,
+# ASC_KEY_ID, ASC_ISSUER_ID; Admin role, so it can create the app IDs, App Group, certificates and
+# profiles it needs). The build number is the run number, so every upload is a new TestFlight build.
 name: iOS
 
 on:
@@ -83,3 +86,60 @@ jobs:
           name: ios-screens
           path: screens
           if-no-files-found: warn
+
+  testflight:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build:app
+
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          npx cap copy ios
+          (cd ios/App && xcodegen generate)
+          npx cap update ios
+
+      - name: API key
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/asc"
+          printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc/key.p8"
+
+      - name: Archive
+        working-directory: ios/App
+        run: |
+          xcodebuild archive -project App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/asc/key.p8" \
+            -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}" > archive.log 2>&1 \
+            || { grep -E "error:|requires a provisioning|No profiles|App Group" archive.log | sort -u | head -40; tail -20 archive.log; exit 1; }
+          echo "archived build ${{ github.run_number }}"
+
+      - name: Upload to TestFlight
+        working-directory: ios/App
+        run: |
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportOptionsPlist ExportOptions.plist -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/asc/key.p8" \
+            -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}" > export.log 2>&1 \
+            || { grep -iE "error|cannot be found|no suitable application records" export.log | sort -u | head -40; tail -20 export.log; exit 1; }
+          grep -iE "upload|success" export.log | tail -5
+
+      - name: Forget the key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/asc"
