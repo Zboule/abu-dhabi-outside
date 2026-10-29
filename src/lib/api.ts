@@ -5,7 +5,9 @@
 //    archived model runs up to today+15 days, UV index included (the plain forecast
 //    API has holes in its past UV). Both edges are enforced server-side with a 400.
 //  - Air: the CAMS air-quality API (dust split out from PM, plus SO2/NO2/O3/CO),
-//    from 2022-09 to about today+6 days.
+//    from 2022-09 to about today+6 days. For the next 3 days the particles (PM2.5, PM10) come
+//    instead from data/forecast/latest.json, the SILAM + GEFS-Aerosols blend the GitHub Action
+//    writes (scripts/air_forecast.py); CAMS stays for the gases and as the fallback.
 //
 // All times are Asia/Dubai wall-clock strings ("2026-09-26T14:00"), used as join keys
 // and never parsed into a Date: a phone in another zone must still see Dubai hours.
@@ -46,6 +48,8 @@ export interface HourRaw {
   model?: { pm25: number | null; pm10: number | null; no2: number | null; o3: number | null };
   /** On forecast hours: pulled toward the latest measurements (see anchorForecast). */
   anchored?: boolean;
+  /** Model hours: where PM2.5/PM10 come from ("silam+gefs", "silam", "gefs"; absent = CAMS). See fetchBlend. */
+  pmSrc?: string;
 }
 
 /** Today's date in Dubai as YYYY-MM-DD (en-CA formats as ISO). */
@@ -422,21 +426,69 @@ export async function fetchStations(start: string, end: string): Promise<Map<str
   return out;
 }
 
-/** fetchOutdoor, with every already-measured hour's air replaced by the EAD station median. */
+// ---- the particle forecast: SILAM + GEFS-Aerosols, blended by the Action ----
+//
+// Scored over Sep 30 - Oct 29 2026 against the stations (next-day avoid/ok call, kids limits),
+// CAMS got 62-64% of hours right (skill 0.15), FMI's SILAM 71%, NOAA's GEFS-Aerosols 70% and
+// their mean 72-75% (skill 0.33-0.38; PM2.5 error 14 -> 9, PM10 50 -> 28 µg/m³). The Action
+// (scripts/air_forecast.py) reads both at this point every hour and publishes the blend with the
+// site as data/forecast/latest.json: for every hour from yesterday to ~3 days ahead, the mean
+// of the sources that reach it (CAMS where neither does) and which they were.
+
+/** latest.json older than this is ignored (the Action failed for too long): CAMS as before. */
+export const BLEND_MAX_AGE_H = 12;
+type BlendHour = { pm25: number | null; pm10: number | null; src: string };
+interface BlendDoc {
+  generated: string; // ISO UTC
+  hourly: { time: string; pm25: number | null; pm10: number | null; src: string | null }[];
+}
+
+const blendCache = new Map<string, Promise<Map<string, BlendHour> | null>>();
+/** The blend by hour key, fetched once per Dubai hour; null when missing, stale or unreadable. */
+export function fetchBlend(nowHour = dubaiNowHour()): Promise<Map<string, BlendHour> | null> {
+  const hit = blendCache.get(nowHour);
+  if (hit) return hit;
+  blendCache.clear();
+  const base = import.meta.env?.VITE_DATA_BASE ?? import.meta.env?.BASE_URL ?? '/';
+  const p = fetch(`${base}data/forecast/latest.json`)
+    .then((r) => (r.ok ? (r.json() as Promise<BlendDoc>) : null))
+    .then((doc) => {
+      if (!doc || Date.now() - Date.parse(doc.generated) > BLEND_MAX_AGE_H * 3600000) return null;
+      const out = new Map<string, BlendHour>();
+      for (const h of doc.hourly) {
+        if (h.src && (h.pm25 != null || h.pm10 != null)) out.set(h.time, { pm25: h.pm25, pm10: h.pm10, src: h.src });
+      }
+      return out.size ? out : null;
+    })
+    .catch(() => null);
+  blendCache.set(nowHour, p);
+  return p;
+}
+
+/**
+ * fetchOutdoor, with every already-measured hour's air replaced by the EAD station median, and the
+ * model hours' particles by the SILAM + GEFS blend where it reaches (its own value stands in for
+ * CAMS as "the model" on the measured hours too, so anchorForecast nudges the blend by its own gap).
+ */
 export async function fetchOutdoorMeasured(start: string, end: string): Promise<HourRaw[]> {
   const today = dubaiToday();
-  const [hours, measured, bias] = await Promise.all([
+  const recent = end >= addDays(today, -1);
+  const [hours, measured, bias, blend] = await Promise.all([
     fetchOutdoor(start, end),
     start <= today ? fetchStations(start, end) : Promise.resolve(new Map<string, Measured>()),
-    end >= addDays(today, -1) ? ozoneBias(today) : Promise.resolve(null),
+    recent ? ozoneBias(today) : Promise.resolve(null),
+    recent ? fetchBlend() : Promise.resolve(null),
   ]);
   const o3 = (h: HourRaw) => (bias && h.o3 != null ? Math.max(0, h.o3 + bias[Number(h.time.slice(11, 13))]) : h.o3);
   return anchorForecast(
     hours.map((h) => {
+      const b = blend?.get(h.time);
+      // a blend row that itself fell back to CAMS adds nothing over the live CAMS series
+      const pm = b && b.src !== 'cams' ? { pm25: b.pm25 ?? h.pm25, pm10: b.pm10 ?? h.pm10, pmSrc: b.src } : {};
       const m = measured.get(h.time);
       return m
-        ? { ...h, ...m, airSrc: 'station' as const, model: { pm25: h.pm25, pm10: h.pm10, no2: h.no2, o3: o3(h) } }
-        : { ...h, o3: o3(h), airSrc: 'model' as const };
+        ? { ...h, ...m, airSrc: 'station' as const, model: { pm25: pm.pm25 ?? h.pm25, pm10: pm.pm10 ?? h.pm10, no2: h.no2, o3: o3(h) } }
+        : { ...h, ...pm, o3: o3(h), airSrc: 'model' as const };
     }),
   );
 }

@@ -17,7 +17,15 @@ longer ranges (last week, 3 days, 2 weeks, 1 or 3 months, a year average) are ho
 - **Air, past hours:** measured, the median of 5 [Environment Agency Abu Dhabi](https://www.adairquality.ae)
   stations (Hamdan St, Khadija School, Khalifa School, Mussafah, Al Maqta). The model below misses most
   dust storms and halves traffic NO2, so anything already measured uses the stations.
-- **Air, forecast:** the CAMS model via Open-Meteo, about 5 days ahead, rough.
+- **Air, forecast:** particles (PM2.5, PM10) for the next 3 days are the mean of two models, read at this
+  point by the hourly Action (`scripts/air_forecast.py`): [SILAM](https://silam.fmi.fi) by the Finnish
+  Meteorological Institute (open data, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)) and
+  [GEFS-Aerosols](https://www.emc.ncep.noaa.gov/emc/pages/numerical_forecast_systems/gefs/aerosol.php) by NOAA
+  (public domain), both from their AWS open-data buckets. Scored against the stations over Oct 2026
+  (next-day avoid/ok call), CAMS alone got 64% of hours right, each of the two 70-72%, their mean 72-75%
+  (PM10 error 50 -> 28 µg/m³). Gases, dust and days 4-5 stay with the CAMS model via Open-Meteo, which is
+  also the fallback when the blend is missing or over 12 hours old. The forecast hours are then nudged by
+  the gap between the stations and the model over the last 3 measured hours, fading over ~12 hours.
 - **1 and 3 months, year average:** the same dates over the last 3 years, each year rated on its own.
 
 ## How it rates an hour
@@ -37,7 +45,10 @@ Not medical advice: a guide for planning a day out.
 
 A static Vite + React app on GitHub Pages. `.github/workflows/pages.yml` runs on every push and every
 hour: it catches the EAD station mirror up (`scripts/ead_sync.py`, kept on the `data` branch as one
-amended commit), builds the site and publishes the mirror next to it at `data/air/YYYY-MM.json`.
+amended commit), archives the day's SILAM and GEFS-Aerosols point forecasts next to it and blends them
+(`scripts/air_forecast.py`: `forecast/YYYY-MM/<source>-<run>.json` as issued, `forecast/latest.json` for
+the page; needs numpy, h5py and eccodes, `scripts/requirements-forecast.txt`), builds the site and
+publishes the mirror and the blend next to it at `data/air/YYYY-MM.json` and `data/forecast/latest.json`.
 
 It also writes the phone widgets' feed, `data/widget/v1.json` (`scripts/widget_feed.mts`): every hour
 from today to the end of the day after tomorrow, rated by the same code under both kids and adult
@@ -46,5 +57,5 @@ native code are in `contract/tokens.json`.
 
 ```sh
 npm install
-npm run dev   # station data is only there in the deployed site (or copy it to public/data/air)
+npm run dev   # station data and the blend are only there in the deployed site (or copy them to public/data/)
 ```

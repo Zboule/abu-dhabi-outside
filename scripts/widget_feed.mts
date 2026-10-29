@@ -9,7 +9,8 @@
 //   node scripts/widget_feed.mts dist/data/widget/v1.json
 //
 // Station data is read from disk (AIR_DATA, default station-data/air): the mirror the job just
-// synced, not the copy published by the previous run.
+// synced, not the copy published by the previous run; the particle blend (data/forecast/latest.json)
+// from its sibling directory (FORECAST_DATA, default station-data/forecast).
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { addDays, dubaiNowHour, dubaiToday, fetchOutdoorMeasured } from '../src/lib/api.ts';
@@ -19,13 +20,15 @@ import { NORMAL, SENSITIVE, enrich, reasons, summarizeDays, type Hour, type Leve
 const out = process.argv[2];
 if (!out) throw new Error('usage: widget_feed.mts <output.json>');
 const AIR = process.env.AIR_DATA ?? 'station-data/air';
+const FORECAST = process.env.FORECAST_DATA ?? join(dirname(AIR), 'forecast');
 const DAYS = 3;
 
 const realFetch = globalThis.fetch;
 globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-  if (typeof input === 'string' && input.startsWith('/data/air/')) {
+  const local = typeof input === 'string' ? [['/data/air/', AIR], ['/data/forecast/', FORECAST]].find(([p]) => input.startsWith(p)) : null;
+  if (local && typeof input === 'string') {
     try {
-      return new Response(readFileSync(join(AIR, input.slice('/data/air/'.length))), { headers: { 'content-type': 'application/json' } });
+      return new Response(readFileSync(join(local[1], input.slice(local[0].length))), { headers: { 'content-type': 'application/json' } });
     } catch {
       return new Response(null, { status: 404 });
     }

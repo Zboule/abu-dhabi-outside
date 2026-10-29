@@ -629,7 +629,9 @@ function HourDetail({ h, compact = false }: { h: Hour; th: Thresholds; compact?:
               ? '3-year average'
               : h.time < dubaiNowHour()
                 ? 'Model: no station data for this hour'
-                : 'Model forecast',
+                : h.pmSrc
+                  ? `Forecast: ${PM_SRC_LABEL[h.pmSrc] ?? h.pmSrc} for particles, CAMS for gases`
+                  : 'Model forecast (CAMS)',
     },
   ];
   return (
@@ -679,13 +681,20 @@ function HourDetail({ h, compact = false }: { h: Hour; th: Thresholds; compact?:
                 : `Typical year, a real reading from the last 3: PM2.5 ${fmt(h.pm25)} · PM10 ${fmt(h.pm10)} µg/m³`
               : h.airSrc === 'station'
               ? `Measured, median of 5 EAD stations: PM2.5 ${fmt(h.pm25)} · PM10 ${fmt(h.pm10)} · NO₂ ${fmt(h.no2)} µg/m³`
-              : `Model: PM2.5 ${fmt(h.pm25)} · dust ${fmt(h.dust)} · PM10 ${fmt(h.pm10)} µg/m³ · US AQI ${fmt(h.usAqi)}`}
+              : `${h.pmSrc ? (PM_SRC_LABEL[h.pmSrc] ?? h.pmSrc) : 'CAMS'}: PM2.5 ${fmt(h.pm25)} · PM10 ${fmt(h.pm10)} µg/m³ · CAMS dust ${fmt(h.dust)} µg/m³, US AQI ${fmt(h.usAqi)}`}
           </div>
         </div>
       )}
     </div>
   );
 }
+
+/** The particle forecast's sources (HourRaw.pmSrc), as the hour panel names them. */
+const PM_SRC_LABEL: Record<string, string> = {
+  'silam+gefs': 'SILAM + GEFS',
+  silam: 'SILAM',
+  gefs: 'GEFS',
+};
 
 // ---------------------------------------------------------------- info texts
 
@@ -743,7 +752,7 @@ function RatingInfo({ th, sensitive, day, pool }: { th: Thresholds; sensitive: b
         </tbody>
       </table>
       <p>
-        Hours {hh(day.from)} to {hh(day.to + 1)} (change in ⚙️ settings). Air: measured at EAD stations for past hours, the CAMS model about 5 days ahead, a typical year after that in the month views: an example year built from real episodes of the last 3, with as many dusty hours as a year usually has, in the season and hours they usually happen. Pollution is too hard to predict that far out, so after the forecast the 1 and 3 month views rate dust alone; only the year average also places polluted hours. With no air data an hour can be OK at best, never good.
+        Hours {hh(day.from)} to {hh(day.to + 1)} (change in ⚙️ settings). Air: measured at EAD stations for past hours; for the next 3 days particles are the mean of two forecast models (FMI's SILAM and NOAA's GEFS-Aerosols), gases and the days after that the CAMS model, about 5 days ahead; a typical year after that in the month views: an example year built from real episodes of the last 3, with as many dusty hours as a year usually has, in the season and hours they usually happen. Pollution is too hard to predict that far out, so after the forecast the 1 and 3 month views rate dust alone; only the year average also places polluted hours. With no air data an hour can be OK at best, never good.
       </p>
       <p>
         Tile colour is the feels-like temperature. Hatching marks an hour where UV (☀️) or air (🫁) is in the avoid
@@ -1852,8 +1861,10 @@ function Charts(props: { points: ChartPoint[]; byTime: Map<string, Hour>; span: 
             </ul>
             <p className="od-pop-hint">
               Source: hours already measured use the median of 5 Environment Agency Abu Dhabi stations (Hamdan St,
-              Khadija School, Khalifa School, Mussafah, Al Maqta). The forecast is the CAMS model via Open-Meteo, about 5
-              days ahead.
+              Khadija School, Khalifa School, Mussafah, Al Maqta). The forecast for particles over the next 3 days is
+              the mean of SILAM (Finnish Meteorological Institute, CC BY 4.0) and GEFS-Aerosols (NOAA), nudged by what
+              the stations just measured; gases, dust and later days are the CAMS model via Open-Meteo, about 5 days
+              ahead.
             </p>
           </>
         )}
