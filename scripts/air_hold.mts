@@ -1,9 +1,11 @@
 // The air levels shown for each forecast hour, remembered between hourly runs: data/forecast/held.json.
 //
-// A forecast hour right at a limit would otherwise flip between ok and avoid as each run nudges it.
-// So the page, the widgets and the morning post rate a forecast hour against the levels the last
-// run published, and only move it once a new forecast is clearly past the limit (holdLevel in
-// src/lib/index.ts). This writes the levels this run ends up with, for the next one.
+// A forecast hour right at a limit would otherwise flip between ok and avoid as each run nudges it,
+// and again once the stations measure it. So the page, the widgets and the morning post rate an
+// hour against the levels the last run published, and only move it once a new forecast (or the
+// stations) put it clearly past the limit (holdLevel in src/lib/index.ts). This writes the levels
+// this run ends up with, for the next one: the hours to come, and the past HELD_DAYS of hours that
+// were rated as a forecast.
 //
 //   node scripts/air_hold.mts station-data/forecast/held.json
 //
@@ -13,7 +15,7 @@
 // output goes next to the blend, where widget_feed.mts then reads it.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { addDays, dubaiNowHour, dubaiToday, fetchOutdoorMeasured, type HeldDoc } from '../src/lib/api.ts';
+import { HELD_DAYS, addDays, dubaiNowHour, dubaiToday, fetchOutdoorMeasured, type HeldDoc } from '../src/lib/api.ts';
 import { HOLD_MARGIN, NORMAL, SENSITIVE, enrich, profileOf, type Thresholds } from '../src/lib/index.ts';
 
 const out = process.argv[2];
@@ -39,14 +41,18 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
 
 const today = dubaiToday();
 const now = dubaiNowHour();
-// from yesterday, so the NowCast and the forecast anchoring have history for the first hours
-const raw = await fetchOutdoorMeasured(addDays(today, -1), addDays(today, DAYS - 1));
+const since = `${addDays(today, -HELD_DAYS)}T00:00`;
+// a day before the oldest hour kept, so the NowCast and the forecast anchoring have history
+const raw = await fetchOutdoorMeasured(addDays(today, -HELD_DAYS - 1), addDays(today, DAYS - 1));
 const doc: HeldDoc = { generated: new Date().toISOString(), margin: HOLD_MARGIN, hours: {} };
 let kept = 0;
 for (const th of [SENSITIVE, NORMAL] as Thresholds[]) {
   const prof = profileOf(th)!;
   for (const h of enrich(raw, th)) {
-    if (h.airSrc !== 'model' || h.time < now || (h.chemLevel === 'na' && h.dustLevel === 'na')) continue;
+    // every forecast hour to come, and the hours gone by that were rated as a forecast: once
+    // measured they keep that call too (unless the stations put them clearly past the limit)
+    const future = h.airSrc === 'model' && h.time >= now;
+    if (!(future || (h.held?.[prof] && h.time >= since)) || (h.chemLevel === 'na' && h.dustLevel === 'na')) continue;
     (doc.hours[h.time] ??= {})[prof] = [h.chemLevel, h.dustLevel];
     if (h.held?.[prof]) kept++;
   }
@@ -54,4 +60,4 @@ for (const th of [SENSITIVE, NORMAL] as Thresholds[]) {
 
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, JSON.stringify(doc));
-console.log(`${out}: ${Object.keys(doc.hours).length} forecast hours, ${kept ? `${kept} profile-hours rated against the previous run` : 'no previous run to start from'}`);
+console.log(`${out}: ${Object.keys(doc.hours).length} hours (to come, and past ones rated as a forecast), ${kept ? `${kept} profile-hours rated against the previous run` : 'no previous run to start from'}`);

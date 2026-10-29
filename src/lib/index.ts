@@ -299,9 +299,10 @@ export function enrich(raw: HourRaw[], th: Thresholds): Hour[] {
       so2: h.so2 == null ? null : scale(h.so2 / 2.62, SO2_PPB),
       co: h.co == null || co == null ? null : scale(co / 1145, CO_8H_PPM), // µg/m³ → ppm
     };
-    // a forecast hour keeps the level it was shown with until a run moves it clearly past a limit,
-    // its index numbers pulled to that side of the limit so everything shown agrees with the level
-    const held = h.airSrc === 'model' && prof ? h.held?.[prof] : undefined;
+    // an hour keeps the level it was shown with until a new forecast, or the stations once it's
+    // measured, put it clearly past a limit; its index numbers are pulled to that side of the
+    // limit so everything shown agrees with the level
+    const held = h.airSrc !== 'typical' && prof ? h.held?.[prof] : undefined;
     if (held) holdSubs(sub, held, th);
     let driver: Driver | null = null;
     for (const k of Object.keys(sub) as Driver[]) {

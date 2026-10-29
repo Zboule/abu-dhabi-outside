@@ -30,6 +30,8 @@ longer ranges (last week, 3 days, 2 weeks, 1 or 3 months, a year average) are ho
   each hourly run by `scripts/air_hold.mts`) until a new forecast is 10 index points past the limit, so
   an hour sitting at a limit doesn't flip between ok and avoid with every update. While it's kept, its
   index is shown on that side of the limit (100 for a 105 kept at ok, 101 for a 95 kept at avoid).
+  Once the hour is measured, a station reading within those 10 points keeps the forecast's call the same
+  way (kept 14 days, for the past views); a reading clearly past the limit wins.
 - **1 and 3 months, year average:** the same dates over the last 3 years, each year rated on its own.
 
 ## How it rates an hour

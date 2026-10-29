@@ -50,7 +50,7 @@ export interface HourRaw {
   anchored?: boolean;
   /** Model hours: where PM2.5/PM10 come from ("silam+gefs", "silam", "gefs"; absent = CAMS). See fetchBlend. */
   pmSrc?: string;
-  /** Model hours: the [pollution, dust] levels the last hourly run showed, per profile (see fetchHeld). */
+  /** Model and measured hours: the [pollution, dust] levels the last hourly run showed, per profile (see fetchHeld). */
   held?: Partial<Record<'kids' | 'adults', [HeldLevel, HeldLevel]>>;
 }
 
@@ -474,7 +474,12 @@ export function fetchBlend(nowHour = dubaiNowHour()): Promise<Map<string, BlendH
 // Every hourly run of the Action (scripts/air_hold.mts) publishes data/forecast/held.json: for each
 // forecast hour, the pollution and dust levels it rated, per profile. The next rating keeps them
 // unless the new forecast is clearly past a limit (holdLevel, HOLD_MARGIN in index.ts), so the
-// page, the widgets and the morning post all show the same, steadier call.
+// page, the widgets and the morning post all show the same, steadier call. Once the hour is
+// measured the same holds against the stations: a reading near the limit keeps the forecast's call,
+// one clearly past it wins. Kept HELD_DAYS back, which covers the past views (last week, 2 weeks).
+
+/** How far back the held levels are kept (days): older measured hours show the plain readings. */
+export const HELD_DAYS = 14;
 
 export interface HeldDoc {
   generated: string; // ISO UTC
@@ -510,7 +515,7 @@ export async function fetchOutdoorMeasured(start: string, end: string): Promise<
     start <= today ? fetchStations(start, end) : Promise.resolve(new Map<string, Measured>()),
     recent ? ozoneBias(today) : Promise.resolve(null),
     recent ? fetchBlend() : Promise.resolve(null),
-    end >= today ? fetchHeld() : Promise.resolve(null),
+    end >= addDays(today, -HELD_DAYS) ? fetchHeld() : Promise.resolve(null),
   ]);
   const o3 = (h: HourRaw) => (bias && h.o3 != null ? Math.max(0, h.o3 + bias[Number(h.time.slice(11, 13))]) : h.o3);
   return anchorForecast(
@@ -519,9 +524,10 @@ export async function fetchOutdoorMeasured(start: string, end: string): Promise<
       // a blend row that itself fell back to CAMS adds nothing over the live CAMS series
       const pm = b && b.src !== 'cams' ? { pm25: b.pm25 ?? h.pm25, pm10: b.pm10 ?? h.pm10, pmSrc: b.src } : {};
       const m = measured.get(h.time);
+      const kept = held?.[h.time] ? { held: held[h.time] } : {};
       return m
-        ? { ...h, ...m, airSrc: 'station' as const, model: { pm25: pm.pm25 ?? h.pm25, pm10: pm.pm10 ?? h.pm10, no2: h.no2, o3: o3(h) } }
-        : { ...h, ...pm, o3: o3(h), airSrc: 'model' as const, ...(held?.[h.time] ? { held: held[h.time] } : {}) };
+        ? { ...h, ...m, airSrc: 'station' as const, model: { pm25: pm.pm25 ?? h.pm25, pm10: pm.pm10 ?? h.pm10, no2: h.no2, o3: o3(h) }, ...kept }
+        : { ...h, ...pm, o3: o3(h), airSrc: 'model' as const, ...kept };
     }),
   );
 }
