@@ -210,6 +210,27 @@ export function holdLevel(v: number | null, prev: Level | undefined, good: numbe
   return RANK[now] > RANK[prev] ? (RANK[moved] > RANK[prev] ? moved : prev) : RANK[moved] < RANK[prev] ? moved : prev;
 }
 
+const CHEM: Driver[] = ['pm25', 'o3', 'no2', 'so2', 'co'];
+
+/**
+ * Pull an hour's sub-indexes to the side of each limit its held levels say ([pollution, dust]),
+ * unless the new forecast is clearly past it (holdLevel). Held at ok, a pollution forecast of 105
+ * shows as 100; held at avoid, a 95 shows as 101. Every pollutant is capped (the bars agree with
+ * the headline number) and only the top one is raised, so the index, its bars and the level match.
+ */
+function holdSubs(sub: Record<Driver, number | null>, held: readonly Level[], th: Thresholds) {
+  const pull = (keys: Driver[], prev: Level | undefined, good: number, ok: number) => {
+    const top = keys.filter((k) => sub[k] != null).sort((a, b) => sub[b]! - sub[a]!)[0];
+    if (!top) return;
+    const to = holdLevel(Math.round(sub[top]!), prev, good, ok);
+    const [lo, hi] = to === 'good' ? [0, good] : to === 'ok' ? [good + 1, ok] : [ok + 1, Infinity];
+    for (const k of keys) if (sub[k] != null) sub[k] = Math.min(sub[k]!, hi);
+    sub[top] = Math.max(sub[top]!, lo);
+  };
+  pull(CHEM, held[0], th.airGood, th.airOk);
+  pull(['dust'], held[1], th.dustGood, th.dustOk);
+}
+
 /** The profile a set of limits belongs to, as the held levels are keyed (see fetchHeld). */
 export const profileOf = (th: Thresholds): 'kids' | 'adults' | null => (th === SENSITIVE ? 'kids' : th === NORMAL ? 'adults' : null);
 
@@ -278,6 +299,10 @@ export function enrich(raw: HourRaw[], th: Thresholds): Hour[] {
       so2: h.so2 == null ? null : scale(h.so2 / 2.62, SO2_PPB),
       co: h.co == null || co == null ? null : scale(co / 1145, CO_8H_PPM), // µg/m³ → ppm
     };
+    // a forecast hour keeps the level it was shown with until a run moves it clearly past a limit,
+    // its index numbers pulled to that side of the limit so everything shown agrees with the level
+    const held = h.airSrc === 'model' && prof ? h.held?.[prof] : undefined;
+    if (held) holdSubs(sub, held, th);
     let driver: Driver | null = null;
     for (const k of Object.keys(sub) as Driver[]) {
       if (sub[k] != null && (driver == null || sub[k]! > sub[driver]!)) driver = k;
@@ -289,10 +314,8 @@ export function enrich(raw: HourRaw[], th: Thresholds): Hour[] {
     }
     const chem = chemDriver ? Math.round(sub[chemDriver]!) : null;
     const dustIdx = sub.dust == null ? null : Math.round(sub.dust);
-    // a forecast hour keeps the level it was shown with until a run moves it clearly past a limit
-    const held = h.airSrc === 'model' && prof ? h.held?.[prof] : undefined;
-    const chemLevel = holdLevel(chem, held?.[0], th.airGood, th.airOk);
-    const dustLevel = holdLevel(dustIdx, held?.[1], th.dustGood, th.dustOk);
+    const chemLevel = level(chem, th.airGood, th.airOk);
+    const dustLevel = level(dustIdx, th.dustGood, th.dustOk);
 
     const hf = heatFeels(h.feels, h.night, th);
     const heat = level(hf, th.feelsGood, th.feelsOk);
