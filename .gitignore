@@ -3,3 +3,4 @@ dist
 station-data
 *.tsbuildinfo
 dist-app
+__pycache__/
