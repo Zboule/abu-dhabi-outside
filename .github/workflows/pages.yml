@@ -81,6 +81,15 @@ jobs:
           cp -r station-data/air dist/data/air
           cp station-data/forecast/latest.json dist/data/forecast/ 2>/dev/null || echo "no blend to publish"
 
+      # each forecast hour's air levels, kept for the next run so an hour at a limit doesn't flip
+      # every hour (scripts/air_hold.mts, starting from the published copy). Before the widget feed,
+      # which rates with them too. If it fails, the next run just starts from the plain limits
+      - name: Air levels held for the next run
+        continue-on-error: true
+        run: |
+          AIR_DATA=station-data/air node scripts/air_hold.mts station-data/forecast/held.json
+          cp station-data/forecast/held.json dist/data/forecast/
+
       # the phone widgets' feed (scripts/widget_feed.mts). A deploy replaces the whole site, so
       # when it can't be made the last published one ships again, and the run turns red below
       - name: Widget feed

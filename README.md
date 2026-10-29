@@ -26,6 +26,9 @@ longer ranges (last week, 3 days, 2 weeks, 1 or 3 months, a year average) are ho
   (PM10 error 50 -> 28 µg/m³). Gases, dust and days 4-5 stay with the CAMS model via Open-Meteo, which is
   also the fallback when the blend is missing or over 12 hours old. The forecast hours are then nudged by
   the gap between the stations and the model over the last 3 measured hours, fading over ~12 hours.
+  A forecast hour then keeps the air level it was last shown with (`data/forecast/held.json`, written
+  each hourly run by `scripts/air_hold.mts`) until a new forecast is 10 index points past the limit, so
+  an hour sitting at a limit doesn't flip between ok and avoid with every update.
 - **1 and 3 months, year average:** the same dates over the last 3 years, each year rated on its own.
 
 ## How it rates an hour

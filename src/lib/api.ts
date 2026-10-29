@@ -50,7 +50,11 @@ export interface HourRaw {
   anchored?: boolean;
   /** Model hours: where PM2.5/PM10 come from ("silam+gefs", "silam", "gefs"; absent = CAMS). See fetchBlend. */
   pmSrc?: string;
+  /** Model hours: the [pollution, dust] levels the last hourly run showed, per profile (see fetchHeld). */
+  held?: Partial<Record<'kids' | 'adults', [HeldLevel, HeldLevel]>>;
 }
+
+type HeldLevel = 'good' | 'ok' | 'bad' | 'na';
 
 /** Today's date in Dubai as YYYY-MM-DD (en-CA formats as ISO). */
 export function dubaiToday(): string {
@@ -465,6 +469,34 @@ export function fetchBlend(nowHour = dubaiNowHour()): Promise<Map<string, BlendH
   return p;
 }
 
+// ---- the levels shown before: forecast hours don't flip at the limit ----
+//
+// Every hourly run of the Action (scripts/air_hold.mts) publishes data/forecast/held.json: for each
+// forecast hour, the pollution and dust levels it rated, per profile. The next rating keeps them
+// unless the new forecast is clearly past a limit (holdLevel, HOLD_MARGIN in index.ts), so the
+// page, the widgets and the morning post all show the same, steadier call.
+
+export interface HeldDoc {
+  generated: string; // ISO UTC
+  margin: number;
+  hours: Record<string, Partial<Record<'kids' | 'adults', [HeldLevel, HeldLevel]>>>;
+}
+
+const heldCache = new Map<string, Promise<HeldDoc['hours'] | null>>();
+/** The held levels by hour key, fetched once per Dubai hour; null when missing, stale or unreadable. */
+export function fetchHeld(nowHour = dubaiNowHour()): Promise<HeldDoc['hours'] | null> {
+  const hit = heldCache.get(nowHour);
+  if (hit) return hit;
+  heldCache.clear();
+  const base = import.meta.env?.VITE_DATA_BASE ?? import.meta.env?.BASE_URL ?? '/';
+  const p = fetch(`${base}data/forecast/held.json`)
+    .then((r) => (r.ok ? (r.json() as Promise<HeldDoc>) : null))
+    .then((doc) => (!doc || Date.now() - Date.parse(doc.generated) > BLEND_MAX_AGE_H * 3600000 ? null : doc.hours))
+    .catch(() => null);
+  heldCache.set(nowHour, p);
+  return p;
+}
+
 /**
  * fetchOutdoor, with every already-measured hour's air replaced by the EAD station median, and the
  * model hours' particles by the SILAM + GEFS blend where it reaches (its own value stands in for
@@ -473,11 +505,12 @@ export function fetchBlend(nowHour = dubaiNowHour()): Promise<Map<string, BlendH
 export async function fetchOutdoorMeasured(start: string, end: string): Promise<HourRaw[]> {
   const today = dubaiToday();
   const recent = end >= addDays(today, -1);
-  const [hours, measured, bias, blend] = await Promise.all([
+  const [hours, measured, bias, blend, held] = await Promise.all([
     fetchOutdoor(start, end),
     start <= today ? fetchStations(start, end) : Promise.resolve(new Map<string, Measured>()),
     recent ? ozoneBias(today) : Promise.resolve(null),
     recent ? fetchBlend() : Promise.resolve(null),
+    end >= today ? fetchHeld() : Promise.resolve(null),
   ]);
   const o3 = (h: HourRaw) => (bias && h.o3 != null ? Math.max(0, h.o3 + bias[Number(h.time.slice(11, 13))]) : h.o3);
   return anchorForecast(
@@ -488,7 +521,7 @@ export async function fetchOutdoorMeasured(start: string, end: string): Promise<
       const m = measured.get(h.time);
       return m
         ? { ...h, ...m, airSrc: 'station' as const, model: { pm25: pm.pm25 ?? h.pm25, pm10: pm.pm10 ?? h.pm10, no2: h.no2, o3: o3(h) } }
-        : { ...h, ...pm, o3: o3(h), airSrc: 'model' as const };
+        : { ...h, ...pm, o3: o3(h), airSrc: 'model' as const, ...(held?.[h.time] ? { held: held[h.time] } : {}) };
     }),
   );
 }

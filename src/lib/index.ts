@@ -192,6 +192,27 @@ function level(v: number | null, good: number, ok: number): Level {
   return v <= good ? 'good' : v <= ok ? 'ok' : 'bad';
 }
 
+/**
+ * How far past a limit (index points) a new forecast must go to change a forecast hour's air
+ * level from the one shown before, so an hour sitting at the limit doesn't flip with every run.
+ * Replayed on Oct 2026 (the 20:00 forecast, then the 07:00 one, for the same hours, blend +
+ * station anchor), 10 cut the flips by a third (8.8% -> 5.7% of hours) and left the morning call
+ * as right as before (81%); 15 and up started to cost it.
+ */
+export const HOLD_MARGIN = 10;
+
+/** The level of `v`, kept at `prev` unless `v` is past the limit between them by HOLD_MARGIN. */
+export function holdLevel(v: number | null, prev: Level | undefined, good: number, ok: number, margin = HOLD_MARGIN): Level {
+  const now = level(v, good, ok);
+  if (v == null || prev == null || prev === 'na' || now === prev) return now;
+  // worse: only as far as v - margin reaches, never better than before (and the reverse)
+  const moved = RANK[now] > RANK[prev] ? level(v - margin, good, ok) : level(v + margin, good, ok);
+  return RANK[now] > RANK[prev] ? (RANK[moved] > RANK[prev] ? moved : prev) : RANK[moved] < RANK[prev] ? moved : prev;
+}
+
+/** The profile a set of limits belongs to, as the held levels are keyed (see fetchHeld). */
+export const profileOf = (th: Thresholds): 'kids' | 'adults' | null => (th === SENSITIVE ? 'kids' : th === NORMAL ? 'adults' : null);
+
 /** How an hour's heat reads, in step with its colour: blue words for the blue (too cool for the pool) end. */
 export const CHILL_COLOR = { fresh: '#3d8bff', mild: '#7fd0fb' } as const;
 export function heatWord(h: Pick<Hour, 'heat' | 'chill'>, pool: boolean): string {
@@ -242,6 +263,7 @@ export function enrich(raw: HourRaw[], th: Thresholds): Hour[] {
   const o3s = raw.map((r) => r.o3);
   const cos = raw.map((r) => r.co);
   const back = <T,>(arr: T[], i: number, n: number) => arr.slice(Math.max(0, i - n + 1), i + 1).reverse();
+  const prof = profileOf(th);
 
   return raw.map((h, i) => {
     const p25 = nowcast(back(nonDust, i, 12));
@@ -267,8 +289,10 @@ export function enrich(raw: HourRaw[], th: Thresholds): Hour[] {
     }
     const chem = chemDriver ? Math.round(sub[chemDriver]!) : null;
     const dustIdx = sub.dust == null ? null : Math.round(sub.dust);
-    const chemLevel = level(chem, th.airGood, th.airOk);
-    const dustLevel = level(dustIdx, th.dustGood, th.dustOk);
+    // a forecast hour keeps the level it was shown with until a run moves it clearly past a limit
+    const held = h.airSrc === 'model' && prof ? h.held?.[prof] : undefined;
+    const chemLevel = holdLevel(chem, held?.[0], th.airGood, th.airOk);
+    const dustLevel = holdLevel(dustIdx, held?.[1], th.dustGood, th.dustOk);
 
     const hf = heatFeels(h.feels, h.night, th);
     const heat = level(hf, th.feelsGood, th.feelsOk);
