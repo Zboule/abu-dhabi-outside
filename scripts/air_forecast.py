@@ -81,6 +81,11 @@ def r1(x):
     return None if x is None else round(float(x), 1)
 
 
+def run_is_old(run_time: dt.datetime, hours=18) -> bool:
+    """A run this old has had its retries: what could be read of it is kept, holes included."""
+    return dt.datetime.now(UTC) - run_time > dt.timedelta(hours=hours)
+
+
 # ---- archive ----------------------------------------------------------------------------
 
 
@@ -215,6 +220,7 @@ def silam_run(day: dt.date):
 
     by = {}
     grid = {}
+    missing = 0
     for d in SILAM_DAYS:
         for var in ("PM25", "PM10"):
             url = SILAM_URL % (run, run, var, d)
@@ -225,14 +231,21 @@ def silam_run(day: dt.date):
                     log(f"silam {run}: not out yet")
                     return None
                 warn(f"silam {run} {d} {var}: {e}")
+                missing += 1
                 continue
             except Exception as e:  # noqa: BLE001 - this day/var is left empty
                 warn(f"silam {run} {d} {var}: {type(e).__name__} {e}")
+                missing += 1
                 continue
             # "time: mean" stamped at the end of each hour: label it by the hour it covers
             for t, x in zip(times, vals):
                 by.setdefault(dubai_key(t - dt.timedelta(hours=1)), {})[var] = x
     if not by:
+        return None
+    if missing and not run_is_old(dt.datetime.combine(day, dt.time(), UTC)):
+        # a file still uploading or a failed read: an archived run is never fetched again, so
+        # retry on the next run rather than keep the hole (an old run is kept as it is)
+        warn(f"silam {run}: {missing} of {2 * len(SILAM_DAYS)} files missing, not kept yet")
         return None
     hourly = [{"time": k, "pm25": r1(v.get("PM25")), "pm10": r1(v.get("PM10"))} for k, v in sorted(by.items())]
     return save("silam", run, dt.datetime.combine(day, dt.time(), UTC), hourly, grid)
@@ -310,7 +323,7 @@ def gefs_run(run_time: dt.datetime):
         grid = g or grid
         if v:
             hourly.append({"time": dubai_key(run_time + dt.timedelta(hours=fh)), "pm25": r1(v.get("pm25")), "pm10": r1(v.get("pm10"))})
-    if len(hourly) < len(GEFS_STEPS) // 2:
+    if len(hourly) < len(GEFS_STEPS) // 2 or (len(hourly) < len(GEFS_STEPS) and not run_is_old(run_time)):
         warn(f"gefs {run}: only {len(hourly)} of {len(GEFS_STEPS)} steps, not kept")
         return None
     return save("gefs", run, run_time, hourly, grid)
