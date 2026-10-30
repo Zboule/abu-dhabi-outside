@@ -357,7 +357,7 @@ struct DayRing: View {
             let outW = d * 0.03, t = d * 0.12, poolW = d * 0.026, gap = d * 0.02
             let rPool = d / 2 - poolW / 2
             // the footsteps hug the ring, with a clear gap before the pool lane
-            let rOut = rPool - poolW / 2 - gap * 1.4 - outW / 2
+            let rOut = rPool - poolW / 2 - gap - outW / 2
             let rRing = rOut - outW / 2 - gap * 0.6 - t / 2
             ZStack {
                 ForEach(s.wholeDay, id: \.time) { h in

@@ -327,9 +327,10 @@ export function mountClock(
     return gr;
   }
 
-  // Going out is a walk: a still trail of footprints through each window, left and right, green
-  // for good hours, yellow for OK ones; windows already gone keep a faint trail. Deliberately not
-  // animated: steps appearing and vanishing read as data changing.
+  // Going out is a walk: a trail of footprints through each window, left and right, green for good
+  // hours, yellow for OK ones; windows already gone keep a faint trail. Every step is always there:
+  // only their colour moves, a soft glow walking forward along the trail (steps appearing and
+  // vanishing read as data changing).
   function footPath(sc, left) {
     // a bare footprint pointing along +x: forefoot, narrower heel, five toes curving to the outside
     const p = new Path2D(), m = left ? 1 : -1;
@@ -340,15 +341,18 @@ export function mountClock(
     for (const [tx, ty, tr] of toes) { p.moveTo((tx + tr) * sc, ty * m * sc); p.arc(tx * sc, ty * m * sc, tr * sc, 0, TAU); }
     return p;
   }
-  const STEP = 4; // degrees between steps
-  function drawSteps() {
+  const STEP = 4, PACE = 10; // degrees between steps; degrees a second the glow walks
+  function drawSteps(t) {
     const P = (r, d) => [CX + r * Math.cos(ang(d)), CX + r * Math.sin(ang(d))];
     const sc = Math.max(0.9, S * 0.0028);
     ctx.save();
     for (const { a0, a1, col, past } of OUT_RUNS) {
-      ctx.fillStyle = rgb(mix(col, 0.3), past ? 0.3 : 0.9);
+      const span = a1 - a0 + 40, head = a0 - 20 + (reduce ? -99 : (t * PACE) % span);
       let n = 0;
       for (let d = a0 + 1.5; d < a1 - 1; d += STEP, n++) {
+        // the glow: brighter and whiter where it passes, the steps' own colour elsewhere
+        const g = past ? 0 : Math.exp(-(((d - head) / 9) ** 2));
+        ctx.fillStyle = rgb(mix(col, 0.3 + 0.45 * g), past ? 0.3 : 0.8 + 0.2 * g);
         const left = n % 2 === 0, [x, y] = P(R_LIGHT() + (left ? -1 : 1) * 1.6 * sc, d);
         ctx.save(); ctx.translate(x, y); ctx.rotate(ang(d) + Math.PI / 2 + (left ? -0.12 : 0.12));
         ctx.fill(footPath(sc, left));
@@ -360,7 +364,7 @@ export function mountClock(
 
   // the pool lane, per pixel: laid out once per size (which pixels, where along the lane and
   // across it, their colour), then lit every frame by a moving cell network (caustics)
-  const R_POOL = () => R_OUT + 18, POOL_HW = 4;
+  const R_POOL = () => R_OUT + 16, POOL_HW = 4;
   let pool = null;
   function buildPool() {
     pool = null;
@@ -780,7 +784,7 @@ export function mountClock(
     drawAirParticles(t);
     drawFlames(t);
     drawPool(t);
-    drawSteps();
+    drawSteps(t);
     ctx.restore();
     drawMarkers(t);
   }
