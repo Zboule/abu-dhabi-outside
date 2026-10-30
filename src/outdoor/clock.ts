@@ -130,6 +130,13 @@ export function mountClock(
           : end < SLEEP && blockers(end, end + 1).length ? `Then ${joinWords(blockers(end, end + 1))}.` : `Feels ${h.feels}° right now.`,
       };
     }
+    // OK now: say so, before pointing at a good window later (one good hour later, sometimes good
+    // by a point, must not hide that it's fine to go out now)
+    if (ok.length && ok[0][0] <= start && live && now >= WAKE) {
+      const b = ok[0][1];
+      return { a: "Short trips", b: b >= SLEEP ? "now, all day" : `now, until ${fmt(b)}`, col: COLOR.ok, mood: COLOR.ok,
+        sub: good.length ? `Best ${range(...good[0])}.` : "Stay near shade, keep it brief." };
+    }
     if (good.length) {
       const [a, b] = good[0];
       const w = blockers(start, a);
@@ -260,39 +267,228 @@ export function mountClock(
     // when only OK), pool time just beyond (blue for good hours, pale blue for OK ones). The inside
     // of the dial is the sky.
     // Today's earlier windows stay faint and thin, so a missed morning still shows.
-    const windows = (from, to, good, ok, colGood, colOk) => {
-      const g1 = runs(from, good, to);
-      return g1.length ? { rec: g1, col: colGood } : { rec: runs(from, ok, to), col: colOk };
-    };
+    // every hour you can go out, in its own colour: green when good, yellow when only OK (a good
+    // hour later never hides the OK ones around it)
     const out = new Array(24).fill(null);
-    for (const { rec, col } of live ? [windows(WAKE, now, isGood, isOk, "#6dffa0", "#ffd27a"), windows(now, SLEEP, isGood, isOk, "#6dffa0", "#ffd27a")] : [windows(now, SLEEP, isGood, isOk, "#6dffa0", "#ffd27a")])
-      for (const [a, b] of rec) for (let i = a; i < b; i++) out[i] = col;
+    for (let i = WAKE; i < SLEEP; i++) out[i] = isGood(hours[i]) ? "#6dffa0" : isOk(hours[i]) ? "#ffd27a" : null;
     const swim = new Array(24).fill(null);
     if (DATA.pool) for (let i = live ? WAKE : now; i < SLEEP; i++) swim[i] = { good: "#40c4ff", ok: "#9bdcff" }[hours[i].pool] ?? null;
-    const past = i => live && i < now;
+    // the two windows are drawn alive in frame() (drawSteps, drawPool); the cache only holds the
+    // faint line of pool time already gone
+    OUT_RUNS = arcRuns(out);
+    SWIM_RUNS = arcRuns(swim);
     g.lineCap = "round";
-    const line = (cols, r) => {
-      const key = i => (cols[i] ? `${cols[i]}|${past(i)}` : null);
-      for (let i = 0; i < 24; ) {
-        const k = key(i);
-        if (!k) { i++; continue; }
-        let j = i;
-        while (j + 1 < 24 && key(j + 1) === k) j++;
-        // a small gap only where the line starts or stops, or past meets future
-        const edge = n => n < 0 || n > 23 || !cols[n] || past(n) !== past(i);
-        const a0 = i * 15 + (edge(i - 1) ? 1.5 : 0), a1 = (j + 1) * 15 - (edge(j + 1) ? 1.5 : 0);
-        const faint = past(i);
-        g.save();
-        g.globalAlpha = faint ? 0.4 : 1; g.lineWidth = faint ? 2.5 : 4;
-        g.shadowColor = cols[i]; g.shadowBlur = faint ? 0 : 12; g.strokeStyle = cols[i];
-        g.beginPath(); g.arc(CX, CX, r, ang(a0), ang(a1)); g.stroke();
-        g.restore();
-        i = j + 1;
-      }
-    };
-    line(out, R_OUT + 8);
-    line(swim, R_OUT + 16);
+    // pool time already gone: a faint still line where the water was
+    for (const { a0, a1, col, past } of SWIM_RUNS) {
+      if (!past) continue;
+      g.strokeStyle = rgb(col, 0.4); g.lineWidth = 1.6;
+      g.beginPath(); g.arc(CX, CX, R_POOL(), ang(a0), ang(a1)); g.stroke();
+    }
+    buildPool();
     drawSky(g);
+  }
+
+  // ---------- the good times: footsteps (going out) and water light (pool time) ----------
+  // Going out is a walk along the window (drawSteps); pool time, just beyond, is water light: a lane
+  // of the dancing caustic network seen on the floor of a pool (drawPool). Both keep the verdict's
+  // hue (green / yellow, blue / pale blue). Today's windows already gone stay faint and still.
+  let OUT_RUNS = [], SWIM_RUNS = [];
+  const R_LIGHT = () => R_OUT + 8;
+  const hexRGB = h => [1, 3, 5].map(k => parseInt(h.slice(k, k + 2), 16));
+  // a colour drawn toward white (light's hot core)
+  const mix = (c, k) => c.map(v => v + (255 - v) * k);
+  // runs of one colour and one tense: {a0, a1, col, past, open0, open1}, a small gap only where
+  // the window starts or stops, or past meets future (open: that end is a real start or stop)
+  function arcRuns(cols) {
+    const isPast = i => live && i < now;
+    const key = i => (cols[i] ? `${cols[i]}|${isPast(i)}` : null);
+    const res = [];
+    for (let i = 0; i < 24; ) {
+      const k = key(i);
+      if (!k) { i++; continue; }
+      let j = i;
+      while (j + 1 < 24 && key(j + 1) === k) j++;
+      const edge = n => n < 0 || n > 23 || !cols[n] || isPast(n) !== isPast(i);
+      const open0 = edge(i - 1), open1 = edge(j + 1);
+      res.push({ a0: i * 15 + (open0 ? 1.5 : 0), a1: (j + 1) * 15 - (open1 ? 1.5 : 0), col: hexRGB(cols[i]), good: cols[i] === "#6dffa0" || cols[i] === "#40c4ff", past: isPast(i), open0, open1 });
+      i = j + 1;
+    }
+    return res;
+  }
+
+  // a stroke style whose alpha follows `alphaAt(deg)` along the arc (a conic gradient around the
+  // centre), sampled every `step` degrees over [a0, a1]
+  function arcPaint(col, a0, a1, alphaAt, step = 1) {
+    if (!ctx.createConicGradient) return rgb(col, alphaAt((a0 + a1) / 2));
+    const gr = ctx.createConicGradient(ang(0), CX, CX);
+    const lo = Math.max(0, a0 - step), hi = Math.min(360, a1 + step);
+    for (let d = lo; d <= hi + 1e-6; d += step) gr.addColorStop(Math.min(1, d / 360), rgb(col, +Math.max(0, Math.min(1, alphaAt(d))).toFixed(3)));
+    return gr;
+  }
+
+  // Going out is a walk: a trail of footprints steps forward through each window, left and right,
+  // each step lighting up as it lands and settling, the trail fading behind the walker; good hours
+  // in green, OK ones in yellow. Windows already gone keep a faint still trail.
+  function footPath(sc, left) {
+    // a bare footprint pointing along +x: forefoot, narrower heel, five toes curving to the outside
+    const p = new Path2D(), m = left ? 1 : -1;
+    p.ellipse(0.6 * sc, 0, 1.9 * sc, 1.25 * sc, 0, 0, TAU);
+    p.ellipse(-2.3 * sc, 0.15 * m * sc, 1.25 * sc, 0.95 * sc, 0, 0, TAU);
+    p.rect(-2.3 * sc, -0.8 * sc + 0.15 * m * sc, 2.9 * sc, 1.6 * sc);
+    const toes = [[2.95, -0.85, 0.5], [3.2, -0.15, 0.42], [3.15, 0.5, 0.37], [2.95, 1.05, 0.32], [2.6, 1.5, 0.27]];
+    for (const [tx, ty, tr] of toes) { p.moveTo((tx + tr) * sc, ty * m * sc); p.arc(tx * sc, ty * m * sc, tr * sc, 0, TAU); }
+    return p;
+  }
+  const STEP = 4, PACE = 8; // degrees between steps, degrees a second (a calm walk)
+  function drawSteps(t) {
+    const P = (r, d) => [CX + r * Math.cos(ang(d)), CX + r * Math.sin(ang(d))];
+    const sc = Math.max(0.9, S * 0.0028);
+    ctx.save();
+    for (const { a0, a1, col, past } of OUT_RUNS) {
+      const tint = a => rgb(mix(col, 0.3), a);
+      const span = a1 - a0 + 30, head = a0 + (reduce ? a1 - a0 : (t * PACE) % span);
+      let n = 0;
+      for (let d = a0 + 1.5; d < a1 - 1; d += STEP, n++) {
+        const ago = (head - d) / PACE;
+        const al = past ? 0.3 : ago < 0 ? 0 : 0.35 + 0.65 * Math.max(0, 1 - ago / 0.6);
+        if (al <= 0.02) continue;
+        const left = n % 2 === 0, [x, y] = P(R_LIGHT() + 2 + (left ? -1 : 1) * 1.9 * sc, d);
+        ctx.save(); ctx.translate(x, y); ctx.rotate(ang(d) + Math.PI / 2 + (left ? -0.12 : 0.12));
+        if (!past && ago >= 0 && ago < 0.6) { ctx.shadowColor = tint(1); ctx.shadowBlur = 10 * (1 - ago / 0.6); }
+        ctx.fillStyle = tint(al); ctx.fill(footPath(sc, left));
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
+
+  // the pool lane, per pixel: laid out once per size (which pixels, where along the lane and
+  // across it, their colour), then lit every frame by a moving cell network (caustics)
+  const R_POOL = () => R_OUT + 18, POOL_HW = 4;
+  let pool = null;
+  function buildPool() {
+    pool = null;
+    const runs = SWIM_RUNS;
+    if (!runs.some(r => !r.past)) return;
+    const Q = 4, N = 360 * Q; // a table every quarter degree
+    const hw = new Float32Array(N), cr = new Float32Array(N), cg = new Float32Array(N), cb = new Float32Array(N), fade = new Float32Array(N);
+    for (const { a0, a1, col, past, good, open0, open1 } of runs) {
+      if (past) continue;
+      for (let k = Math.ceil(a0 * Q); k <= Math.floor(a1 * Q) && k < N; k++) {
+        const d = k / Q;
+        // rounded ends where the lane starts or stops
+        const x = Math.min(1, open0 ? (d - a0) / 2.2 : 1, open1 ? (a1 - d) / 2.2 : 1);
+        hw[k] = POOL_HW * Math.sqrt(Math.max(0, 1 - (1 - x) ** 2));
+        [cr[k], cg[k], cb[k]] = col;
+        fade[k] = past ? 0.32 : good ? 1 : 0.8;
+      }
+    }
+    const W = cv.width, RP = R_POOL();
+    const rmax = (RP + POOL_HW + 1) * DPR;
+    const lo = Math.max(0, Math.floor(CX * DPR - rmax)), hi = Math.min(W, Math.ceil(CX * DPR + rmax));
+    const idx = [], ss = [], uu = [], aa = [], ww = [], kk = [];
+    let bx0 = W, by0 = W, bx1 = 0, by1 = 0;
+    for (let y = lo; y < hi; y++) {
+      const dy = (y + 0.5) / DPR - CX;
+      for (let x = lo; x < hi; x++) {
+        const dx = (x + 0.5) / DPR - CX;
+        const r = Math.sqrt(dx * dx + dy * dy), u = r - RP;
+        if (u > POOL_HW + 1 || u < -POOL_HW - 1) continue;
+        let deg = (Math.atan2(dy, dx) * 180) / Math.PI - 90;
+        deg = ((deg % 360) + 360) % 360;
+        const k = Math.round(deg * Q) % N;
+        if (hw[k] <= 0) continue;
+        const a = Math.min(1, (hw[k] - Math.abs(u)) * DPR + 0.5);
+        if (a <= 0) continue;
+        idx.push(y * W + x); ss.push((deg * Math.PI / 180) * RP); uu.push(u); aa.push(a * fade[k]);
+        ww.push(Math.max(0, 1 - (u / Math.max(hw[k], 0.5)) ** 2)); kk.push(k);
+        if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y;
+      }
+    }
+    if (!idx.length) return;
+    const layer = document.createElement("canvas");
+    layer.width = W; layer.height = cv.height;
+    const lg = layer.getContext("2d");
+    const img = lg.createImageData(W, cv.height);
+    // the cell network wraps around the dial: a whole number of cells along the lane
+    const CELL = 7.5, L = TAU * RP, NC = Math.round(L / CELL), ROWS = Math.ceil((2 * POOL_HW) / CELL) + 3;
+    const seed = n => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+    const cells = Array.from({ length: NC * ROWS }, (_, n) => ({
+      w1: 0.5 + seed(n) * 0.9, w2: 0.5 + seed(n + 0.5) * 0.9, p1: seed(n + 0.25) * TAU, p2: seed(n + 0.75) * TAU,
+      jx: (seed(n + 0.1) - 0.5) * 1.4, jy: (seed(n + 0.6) - 0.5) * 1.4,
+    }));
+    // the warp and swell phases of each pixel, kept as sin/cos pairs so a frame needs no trig per
+    // pixel (sin(a + wt) = sin a cos wt + cos a sin wt)
+    const off = POOL_HW + CELL, CS = L / NC; // rows start a cell below the lane
+    const PH = [(s, u) => u * 0.5 + s * 0.07, (s, u) => s * 0.23 - u * 0.8, s => s * 0.13, (s, u) => s * 0.31 + u * 0.6, s => s * 0.055];
+    const sn = PH.map(() => new Float32Array(idx.length)), cs = PH.map(() => new Float32Array(idx.length));
+    const fx0 = new Float32Array(idx.length), fy0 = new Float32Array(idx.length);
+    for (let p = 0; p < idx.length; p++) {
+      PH.forEach((f, j) => { const v = f(ss[p], uu[p]); sn[j][p] = Math.sin(v); cs[j][p] = Math.cos(v); });
+      fx0[p] = ss[p] / CS; fy0[p] = (uu[p] + off) / CELL;
+    }
+    pool = {
+      sn, cs, fx0, fy0,
+      n: idx.length, idx: Int32Array.from(idx), s: Float32Array.from(ss), u: Float32Array.from(uu), a: Float32Array.from(aa), w: Float32Array.from(ww), k: Int32Array.from(kk),
+      cr, cg, cb, layer, lg, img, data: img.data, box: [bx0, by0, bx1 - bx0 + 1, by1 - by0 + 1],
+      NC, ROWS, CS: L / NC, CELL, cells, px: new Float32Array(NC * ROWS), py: new Float32Array(NC * ROWS),
+    };
+  }
+
+  function drawPool(t) {
+    if (!pool) return;
+    // the light moves slowly: 30 fresh pictures a second are plenty, the frames between reuse it
+    if (pool.last !== undefined && t >= pool.last && t - pool.last < 1 / 32) { ctx.drawImage(pool.layer, 0, 0, S, S); return; }
+    pool.last = t;
+    const { n, idx, a, w, k, cr, cg, cb, data, NC, ROWS, cells, px, py, sn, cs, fx0, fy0 } = pool;
+    // the cells' centres wander in small loops: the network flexes and dances
+    for (let c = 0; c < cells.length; c++) {
+      const q = cells[c];
+      px[c] = 0.5 + q.jx * 0.5 + 0.34 * Math.sin(t * q.w1 + q.p1);
+      py[c] = 0.5 + q.jy * 0.5 + 0.34 * Math.cos(t * q.w2 + q.p2);
+    }
+    const W = [0.9, -1.3, -1.1, 0.7, -1.4].map(f => [Math.cos(f * t), Math.sin(f * t)]);
+    const [s0, s1, s2, s3, s4] = sn, [c0, c1, c2, c3, c4] = cs;
+    const [[C0, S0], [C1, S1], [C2, S2], [C3, S3], [C4, S4]] = W;
+    for (let p = 0; p < n; p++) {
+      // a slow warp bends the cell walls into curves, as refracted light does
+      const fx = fx0[p] + 0.3 * (s0[p] * C0 + c0[p] * S0) + 0.14 * (s1[p] * C1 + c1[p] * S1);
+      const fy = fy0[p] + 0.3 * (s2[p] * C2 + c2[p] * S2) + 0.14 * (s3[p] * C3 + c3[p] * S3);
+      const ix = Math.floor(fx), iy = Math.floor(fy);
+      let f1 = 9, f2 = 9, f3 = 9;
+      for (let oy = -1; oy <= 1; oy++) {
+        const ry = iy + oy;
+        if (ry < 0 || ry >= ROWS) continue;
+        for (let ox = -1; ox <= 1; ox++) {
+          const cx = ix + ox, c = ry * NC + (cx < 0 ? cx + NC : cx >= NC ? cx - NC : cx);
+          const dx = cx + px[c] - fx, dy = ry + py[c] - fy;
+          const dd = dx * dx + dy * dy;
+          if (dd < f1) { f3 = f2; f2 = f1; f1 = dd; } else if (dd < f2) { f3 = f2; f2 = dd; } else if (dd < f3) f3 = dd;
+        }
+      }
+      const r1 = Math.sqrt(f1);
+      // bright on the cell walls (0 there), brighter still where three cells meet
+      let I = 1 - (Math.sqrt(f2) - r1) / 0.22;
+      I = I > 0 ? I * I : 0;
+      let J = 1 - (Math.sqrt(f3) - r1) / 0.45;
+      J = J > 0 ? J * J : 0;
+      // light swells travel along the lane, so the net shimmers rather than sits
+      const sw = 0.6 + 0.4 * (s4[p] * C4 + c4[p] * S4);
+      const kk = k[p], wv = w[p];
+      // the water itself: a clear lane of the pool's blue, the light network bright on it
+      const A = 0.6 * (0.8 + 0.2 * wv), L = Math.min(1, (I * (0.8 + 0.7 * J)) * sw * (0.55 + 0.45 * wv));
+      const al = A + L * (1 - A);
+      // deep water, the light in the pool's own blue turning white only where it gathers
+      const hot = 0.1 + 0.75 * L * L;
+      const o = idx[p] * 4, bodyK = (A * (1 - L)) / al * 0.82, lineK = L / al;
+      data[o] = cr[kk] * bodyK + (cr[kk] + (255 - cr[kk]) * hot) * lineK;
+      data[o + 1] = cg[kk] * bodyK + (cg[kk] + (255 - cg[kk]) * hot) * lineK;
+      data[o + 2] = cb[kk] * (bodyK + 0.08) + (cb[kk] + (255 - cb[kk]) * hot) * lineK;
+      data[o + 3] = al * a[p] * 255;
+    }
+    const [x, y, bw, bh] = pool.box;
+    pool.lg.putImageData(pool.img, 0, 0, x, y, bw, bh);
+    ctx.drawImage(pool.layer, 0, 0, S, S);
   }
 
   // cheap smooth noise: layered sines, enough for flicker
@@ -587,6 +783,8 @@ export function mountClock(
     ctx.globalAlpha = e;
     drawAirParticles(t);
     drawFlames(t);
+    drawPool(t);
+    drawSteps(t);
     ctx.restore();
     drawMarkers(t);
   }
