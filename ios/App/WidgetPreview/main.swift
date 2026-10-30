@@ -77,7 +77,7 @@ MainActor.assumeIsolated {
     // each row rendered on its own, stacked
     let images: [CGImage] = cases.map { name, s in
         let r = ImageRenderer(content: row(name, s))
-        r.scale = 2
+        r.scale = CGFloat(Double(ProcessInfo.processInfo.environment["PREVIEW_SCALE"] ?? "2") ?? 2)
         return r.cgImage!
     }
     let width = images.map(\.width).max()!, height = images.map(\.height).reduce(0, +)

@@ -88,7 +88,8 @@ export function mountClock(
   const fmt = h => { if (h % 24 === 0) return "midnight"; if (h === 12) return "noon"; const [n, s] = ampm(h); return `${n} ${s}`; };
   function range(a, b) {
     const [na, sa] = ampm(a), [nb, sb] = ampm(b);
-    if (a === 12 || b === 12) return `${fmt(a)} to ${fmt(b)}`;
+    // noon and midnight are words ("Midnight to 7 AM", not "12 to 7 AM")
+    if (a % 12 === 0 || b % 12 === 0) return `${cap(fmt(a))} to ${fmt(b)}`;
     return sa === sb ? `${na} to ${nb} ${sb}` : `${fmt(a)} to ${fmt(b)}`;
   }
   function runs(from, test, to = SLEEP) {
@@ -119,7 +120,7 @@ export function mountClock(
 
   function headline() {
     const start = Math.max(now, WAKE);
-    const good = runs(now, isGood), ok = runs(now, isOk);
+    const good = runs(now, isGood);
     const h = hours[now];
     if (live && now >= SLEEP) return { a: "Night time", b: "Sleep well", col: "rgba(235,235,245,.62)", sub: "Check again in the morning.", mood: "#1c2a55" };
     if (good.length && good[0][0] <= start && live && now >= WAKE) {
@@ -130,24 +131,19 @@ export function mountClock(
           : end < SLEEP && blockers(end, end + 1).length ? `Then ${joinWords(blockers(end, end + 1))}.` : `Feels ${h.feels}° right now.`,
       };
     }
-    // OK now: say so, before pointing at a good window later (one good hour later, sometimes good
-    // by a point, must not hide that it's fine to go out now)
-    if (ok.length && ok[0][0] <= start && live && now >= WAKE) {
-      const b = ok[0][1];
-      return { a: "Short trips", b: b >= SLEEP ? "now, all day" : `now, until ${fmt(b)}`, col: COLOR.ok, mood: COLOR.ok,
-        sub: good.length ? `Best ${range(...good[0])}.` : "Stay near shade, keep it brief." };
-    }
-    if (good.length) {
-      const [a, b] = good[0];
-      const w = blockers(start, a);
-      const sub = good[1] ? `And again ${range(...good[1])}.` : w.length ? `${cap(joinWords(w))} until then.` : "Conditions improve later.";
-      return { a: "Go out", b: range(a, b), col: COLOR.good, mood: COLOR.good, sub };
-    }
-    if (ok.length) {
-      const [a, b] = ok[0];
+    // otherwise name the next stretch you can go out at all (OK or good hours in a row): "Go out"
+    // when every hour of it is good, "Short trips" when some are only OK. A lone good hour later in
+    // the day (sometimes good by a point) must not hide the OK hours before and around it
+    const okish = h => isGood(h) || isOk(h);
+    const next = runs(now, okish)[0];
+    if (next) {
+      const [a, b] = next, span = hours.slice(a, b), allGood = span.every(isGood);
       const isNow = a <= start && live && now >= WAKE;
-      const sub = ok[1] ? `And again ${range(...ok[1])}. Keep it brief.` : "Stay near shade, keep it brief.";
-      return { a: "Short trips", b: isNow ? `now, until ${fmt(b)}` : range(a, b), col: COLOR.ok, mood: COLOR.ok, sub };
+      const when = isNow ? (b >= SLEEP ? "now, all day" : `now, until ${fmt(b)}`) : range(a, b);
+      const bestRun = runs(a, isGood, b)[0];
+      return allGood
+        ? { a: "Go out", b: when, col: COLOR.good, mood: COLOR.good, sub: `Feels ${hours[a].feels}°${isNow ? " right now" : " then"}.` }
+        : { a: "Short trips", b: when, col: COLOR.ok, mood: COLOR.ok, sub: bestRun ? `Best ${range(...bestRun)}.` : "Stay near shade, keep it brief." };
     }
     // name only what blocks every remaining hour; the rows below carry the rest
     const rest = hours.slice(start, SLEEP);
