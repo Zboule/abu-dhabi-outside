@@ -273,7 +273,7 @@ export function mountClock(
     for (let i = WAKE; i < SLEEP; i++) out[i] = isGood(hours[i]) ? "#6dffa0" : isOk(hours[i]) ? "#ffd27a" : null;
     const swim = new Array(24).fill(null);
     if (DATA.pool) for (let i = live ? WAKE : now; i < SLEEP; i++) swim[i] = { good: "#40c4ff", ok: "#9bdcff" }[hours[i].pool] ?? null;
-    // the two windows are drawn alive in frame() (drawSteps, drawPool); the cache only holds the
+    // the footsteps and the moving water are drawn in frame() (drawSteps, drawPool); the cache holds the
     // faint line of pool time already gone
     OUT_RUNS = arcRuns(out);
     SWIM_RUNS = arcRuns(swim);
@@ -326,9 +326,9 @@ export function mountClock(
     return gr;
   }
 
-  // Going out is a walk: a trail of footprints steps forward through each window, left and right,
-  // each step lighting up as it lands and settling, the trail fading behind the walker; good hours
-  // in green, OK ones in yellow. Windows already gone keep a faint still trail.
+  // Going out is a walk: a still trail of footprints through each window, left and right, green
+  // for good hours, yellow for OK ones; windows already gone keep a faint trail. Deliberately not
+  // animated: steps appearing and vanishing read as data changing.
   function footPath(sc, left) {
     // a bare footprint pointing along +x: forefoot, narrower heel, five toes curving to the outside
     const p = new Path2D(), m = left ? 1 : -1;
@@ -339,23 +339,18 @@ export function mountClock(
     for (const [tx, ty, tr] of toes) { p.moveTo((tx + tr) * sc, ty * m * sc); p.arc(tx * sc, ty * m * sc, tr * sc, 0, TAU); }
     return p;
   }
-  const STEP = 4, PACE = 8; // degrees between steps, degrees a second (a calm walk)
-  function drawSteps(t) {
+  const STEP = 4; // degrees between steps
+  function drawSteps() {
     const P = (r, d) => [CX + r * Math.cos(ang(d)), CX + r * Math.sin(ang(d))];
     const sc = Math.max(0.9, S * 0.0028);
     ctx.save();
     for (const { a0, a1, col, past } of OUT_RUNS) {
-      const tint = a => rgb(mix(col, 0.3), a);
-      const span = a1 - a0 + 30, head = a0 + (reduce ? a1 - a0 : (t * PACE) % span);
+      ctx.fillStyle = rgb(mix(col, 0.3), past ? 0.3 : 0.9);
       let n = 0;
       for (let d = a0 + 1.5; d < a1 - 1; d += STEP, n++) {
-        const ago = (head - d) / PACE;
-        const al = past ? 0.3 : ago < 0 ? 0 : 0.35 + 0.65 * Math.max(0, 1 - ago / 0.6);
-        if (al <= 0.02) continue;
         const left = n % 2 === 0, [x, y] = P(R_LIGHT() + 2 + (left ? -1 : 1) * 1.9 * sc, d);
         ctx.save(); ctx.translate(x, y); ctx.rotate(ang(d) + Math.PI / 2 + (left ? -0.12 : 0.12));
-        if (!past && ago >= 0 && ago < 0.6) { ctx.shadowColor = tint(1); ctx.shadowBlur = 10 * (1 - ago / 0.6); }
-        ctx.fillStyle = tint(al); ctx.fill(footPath(sc, left));
+        ctx.fill(footPath(sc, left));
         ctx.restore();
       }
     }
@@ -784,7 +779,7 @@ export function mountClock(
     drawAirParticles(t);
     drawFlames(t);
     drawPool(t);
-    drawSteps(t);
+    drawSteps();
     ctx.restore();
     drawMarkers(t);
   }
