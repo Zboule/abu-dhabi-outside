@@ -221,8 +221,42 @@ struct Stale: View {
     }
 }
 
-/// Today's day hours as a strip, the clock unrolled: the going-out line on top, the hours
-/// coloured by heat, or by their hazard, the pool line under, now outlined. Hours already gone
+/// A bare footprint pointing along +x (the clock's footPath): forefoot, heel, five toes.
+func footprint(_ sc: CGFloat, left: Bool) -> Path {
+    var p = Path()
+    let m: CGFloat = left ? 1 : -1
+    p.addEllipse(in: CGRect(x: (0.6 - 1.9) * sc, y: -1.25 * sc, width: 3.8 * sc, height: 2.5 * sc))
+    p.addEllipse(in: CGRect(x: (-2.3 - 1.25) * sc, y: (0.15 * m - 0.95) * sc, width: 2.5 * sc, height: 1.9 * sc))
+    p.addRect(CGRect(x: -2.3 * sc, y: (-0.8 + 0.15 * m) * sc, width: 2.9 * sc, height: 1.6 * sc))
+    for (tx, ty, tr) in [(2.95, -0.85, 0.5), (3.2, -0.15, 0.42), (3.15, 0.5, 0.37), (2.95, 1.05, 0.32), (2.6, 1.5, 0.27)] as [(CGFloat, CGFloat, CGFloat)] {
+        p.addEllipse(in: CGRect(x: (tx - tr) * sc, y: (ty * m - tr) * sc, width: 2 * tr * sc, height: 2 * tr * sc))
+    }
+    return p
+}
+
+/// Water light (the clock's pool lane, still): deep blue to aqua, and a net of fine bright
+/// caustic lines across it.
+func drawWater(_ ctx: inout GraphicsContext, lane: Path, in rect: CGRect, ok: Bool, seed: Int) {
+    let deep = ok ? Color(hex: "#3d7fb0") : Color(hex: "#0d4f9a"), light = ok ? Color(hex: "#9bdcff") : Color(hex: "#40c4ff")
+    ctx.fill(lane, with: .linearGradient(Gradient(colors: [light, deep]), startPoint: CGPoint(x: rect.midX, y: rect.minY), endPoint: CGPoint(x: rect.midX, y: rect.maxY)))
+    var c = ctx
+    c.clip(to: lane)
+    var rng = Scatter(seed)
+    for k in 0..<3 {
+        var w = Path()
+        let amp = rect.height * 0.28, len = 6 + rng.next() * 5, ph = rng.next() * 6
+        var x = rect.minX
+        w.move(to: CGPoint(x: x, y: rect.midY + amp * sin(ph)))
+        while x < rect.maxX {
+            x += 1.5
+            w.addLine(to: CGPoint(x: x, y: rect.midY + (CGFloat(k) - 1) * rect.height * 0.22 + amp * sin(ph + x / len)))
+        }
+        c.stroke(w, with: .color(.white.opacity(0.55)), lineWidth: 0.7)
+    }
+}
+
+/// Today's day hours as a strip, the clock unrolled: footprints on top where you can go out, the
+/// hours coloured by heat, or by their hazard, a lane of water under the pool hours, now outlined. Hours already gone
 /// sink toward the night, as on the clock (sunk, not faded: a faded red reads as a cooler pink).
 struct DayStrip: View {
     let s: Snapshot
@@ -231,12 +265,25 @@ struct DayStrip: View {
 
     var body: some View {
         VStack(spacing: 2) {
-            HStack(spacing: gap) {
-                ForEach(s.today, id: \.time) { h in
-                    Capsule().fill(s.outLevel(h)?.color ?? .clear).frame(height: 4)
-                        .opacity(h.hour < s.nowHour ? Palette.fadePast : 1)
+            // going out: footprints walking left to right through the window, two steps an hour
+            Canvas { ctx, size in
+                let n = CGFloat(max(s.today.count, 1)), col = (size.width - gap * (n - 1)) / n
+                var k = 0
+                for (i, h) in s.today.enumerated() {
+                    guard let lv = s.outLevel(h) else { continue }
+                    for half in 0..<2 {
+                        let left = k % 2 == 0
+                        k += 1
+                        let x = CGFloat(i) * (col + gap) + col * (half == 0 ? 0.28 : 0.74)
+                        let y = size.height / 2 + (left ? -1.6 : 1.6)
+                        var c = ctx
+                        c.opacity = h.hour < s.nowHour ? Palette.fadePast : 1
+                        c.translateBy(x: x, y: y)
+                        c.fill(footprint(1.3, left: left), with: .color(lv.color))
+                    }
                 }
             }
+            .frame(height: 10)
             GeometryReader { g in
                 let n = CGFloat(max(s.today.count, 1))
                 let col = (g.size.width - gap * (n - 1)) / n
@@ -264,13 +311,26 @@ struct DayStrip: View {
                 }
             }
             .frame(minHeight: 26, maxHeight: .infinity) // the bar takes what the card has left
+            // pool time: a lane of water light under its hours
+            Canvas { ctx, size in
+                let n = CGFloat(max(s.today.count, 1)), col = (size.width - gap * (n - 1)) / n
+                var i = 0
+                while i < s.today.count {
+                    guard let lv = s.poolLevel(s.today[i]) else { i += 1; continue }
+                    let past = s.today[i].hour < s.nowHour
+                    var j = i
+                    while j + 1 < s.today.count, s.poolLevel(s.today[j + 1]) == lv, (s.today[j + 1].hour < s.nowHour) == past { j += 1 }
+                    let r = CGRect(x: CGFloat(i) * (col + gap), y: 0, width: CGFloat(j - i + 1) * (col + gap) - gap, height: size.height)
+                    var c = ctx
+                    c.opacity = past ? Palette.fadePast : 1
+                    drawWater(&c, lane: Path(roundedRect: r, cornerRadius: size.height / 2), in: r, ok: lv == .ok, seed: i)
+                    i = j + 1
+                }
+            }
+            .frame(height: 6)
             HStack(spacing: gap) {
                 ForEach(s.today, id: \.time) { h in
                     VStack(spacing: 2) {
-                        Capsule()
-                            .fill(s.poolLevel(h) == .good ? Palette.pool.good : s.poolLevel(h) == .ok ? Palette.pool.ok : .clear)
-                            .frame(height: 3)
-                            .opacity(h.hour < s.nowHour ? Palette.fadePast : 1)
                         Text(h.hour % 3 == 0 ? String(format: "%02d", h.hour) : " ")
                             .font(.system(size: 10, weight: .medium).monospacedDigit())
                             .foregroundStyle(.secondary)
@@ -305,12 +365,28 @@ struct DayRing: View {
                     let fade = !s.inDay(h) ? Palette.fadeNight : past ? Palette.fadePast : 1
                     ringHour(h, rRing, t, sink: sink, fade: fade).frame(width: d, height: d)
                     if let o = s.outLevel(h) {
-                        arc(h.hour, rOut, outW, gap: 0).stroke(o.color, style: StrokeStyle(lineWidth: outW, lineCap: .round))
-                            .frame(width: 2 * rOut, height: 2 * rOut).opacity(fade)
+                        // going out: two footprints walking round the hour, forward in time
+                        Canvas { ctx, size in
+                            for half in 0..<2 {
+                                let left = (h.hour * 2 + half) % 2 == 0
+                                let a = ((Double(h.hour) + (half == 0 ? 0.3 : 0.75)) / 24 * 360 + 90) * .pi / 180
+                                let r = rOut + (left ? -1.2 : 1.2)
+                                var c = ctx
+                                c.translateBy(x: size.width / 2 + r * cos(a), y: size.height / 2 + r * sin(a))
+                                c.rotate(by: .radians(a + .pi / 2))
+                                c.fill(footprint(d * 0.0062, left: left), with: .color(o.color))
+                            }
+                        }
+                        .frame(width: d, height: d).opacity(fade)
                     }
                     if let p = s.poolLevel(h) {
-                        arc(h.hour, rPool, poolW, gap: 0).stroke(p == .good ? Palette.pool.good : Palette.pool.ok, lineWidth: poolW)
-                            .frame(width: 2 * rPool, height: 2 * rPool).opacity(fade)
+                        // pool time: water, a blue lane with fine light ripples on it
+                        let col = p == .good ? Palette.pool.good : Palette.pool.ok
+                        ZStack {
+                            arc(h.hour, rPool, poolW, gap: 0).stroke(col.opacity(0.85), lineWidth: poolW * 1.3)
+                            arc(h.hour, rPool, poolW, gap: 0).stroke(Color.white.opacity(0.6), style: StrokeStyle(lineWidth: 0.6, dash: [2.2, 1.6, 0.8, 2]))
+                        }
+                        .frame(width: 2 * rPool, height: 2 * rPool).opacity(fade)
                     }
                 }
                 if s.wholeDay.contains(where: { $0.hour == s.nowHour }) {
