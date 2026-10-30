@@ -293,7 +293,8 @@ export function mountClock(
   // of the dancing caustic network seen on the floor of a pool (drawPool). Both keep the verdict's
   // hue (green / yellow, blue / pale blue). Today's windows already gone stay faint and still.
   let OUT_RUNS = [], SWIM_RUNS = [];
-  const R_LIGHT = () => R_OUT + 8;
+  // the footsteps run close to the ring, clear of the pool lane beyond them
+  const R_LIGHT = () => R_OUT + 6;
   const hexRGB = h => [1, 3, 5].map(k => parseInt(h.slice(k, k + 2), 16));
   // a colour drawn toward white (light's hot core)
   const mix = (c, k) => c.map(v => v + (255 - v) * k);
@@ -348,7 +349,7 @@ export function mountClock(
       ctx.fillStyle = rgb(mix(col, 0.3), past ? 0.3 : 0.9);
       let n = 0;
       for (let d = a0 + 1.5; d < a1 - 1; d += STEP, n++) {
-        const left = n % 2 === 0, [x, y] = P(R_LIGHT() + 2 + (left ? -1 : 1) * 1.9 * sc, d);
+        const left = n % 2 === 0, [x, y] = P(R_LIGHT() + (left ? -1 : 1) * 1.6 * sc, d);
         ctx.save(); ctx.translate(x, y); ctx.rotate(ang(d) + Math.PI / 2 + (left ? -0.12 : 0.12));
         ctx.fill(footPath(sc, left));
         ctx.restore();
