@@ -10,7 +10,7 @@ day() { python3 -c 'import datetime as d,sys; print(d.datetime.now(d.timezone(d.
 q="latitude=24.45&longitude=54.38&timezone=Asia%2FDubai"
 gen=$(date -u +%FT%TZ)
 get() { # name url
-  curl -fsS --retry 3 --retry-delay 5 "$2" -o "$out/$1.raw"
+  curl -fsS --max-time 30 --retry 3 --retry-delay 5 --retry-all-errors "$2" -o "$out/$1.raw"
   python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); d["generated"]=sys.argv[2]; json.dump(d,open(sys.argv[3],"w"),separators=(",",":"))' \
     "$out/$1.raw" "$gen" "$out/$1.json"
   rm "$out/$1.raw"
