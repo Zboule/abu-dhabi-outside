@@ -81,8 +81,54 @@ export function daysBetween(a: string, b: string): number {
 
 type Series = Record<string, (number | null)[]> & { time: string[] };
 
+// Some networks can't reach Open-Meteo from the browser: iCloud Private Relay shares its exit
+// addresses with many people, and Open-Meteo rate-limits by address. So the hourly Action also
+// publishes the recent window of both calls (data/om/, scripts/om_snapshot.sh), and a call that
+// fails is answered from it when it covers the hours asked.
+const SNAPSHOT_MAX_AGE_H = 6;
+const snapshotCache = new Map<string, Promise<(Series & { generated?: string }) | null>>();
+function fetchSnapshot(name: string): Promise<(Series & { generated?: string }) | null> {
+  const hit = snapshotCache.get(name);
+  if (hit) return hit;
+  const base = import.meta.env?.VITE_DATA_BASE ?? import.meta.env?.BASE_URL ?? '/';
+  const p = fetch(`${base}data/om/${name}.json`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((doc) => {
+      if (!doc?.hourly?.time || !doc.generated) return null;
+      if (Date.now() - Date.parse(doc.generated) > SNAPSHOT_MAX_AGE_H * 3600000) return null;
+      return doc.hourly as Series;
+    })
+    .catch(() => null);
+  snapshotCache.set(name, p);
+  p.then((v) => v || snapshotCache.delete(name));
+  return p;
+}
+
+async function fromSnapshot(base: string, vars: string[], start: string, end: string): Promise<Series | null> {
+  const snap = await fetchSnapshot(base.includes('air-quality') ? 'air' : 'weather');
+  if (!snap || !vars.every((v) => v in snap)) return null;
+  const i0 = snap.time.indexOf(`${start}T00:00`);
+  // the forecast edge moves; past it the live call would have stopped short too
+  let i1 = snap.time.indexOf(`${end}T23:00`);
+  if (i1 < 0 && snap.time[snap.time.length - 1] < `${end}T23:00`) i1 = snap.time.length - 1;
+  if (i0 < 0 || i1 < i0) return null;
+  const out = { time: snap.time.slice(i0, i1 + 1) } as Series;
+  for (const v of vars) out[v] = snap[v].slice(i0, i1 + 1);
+  return out;
+}
+
 async function fetchHourly(base: string, vars: string[], start: string, end: string): Promise<Series | null> {
   if (start > end) return null;
+  try {
+    return await fetchLive(base, vars, start, end);
+  } catch (e) {
+    const snap = await fromSnapshot(base, vars, start, end);
+    if (snap) return snap;
+    throw e;
+  }
+}
+
+async function fetchLive(base: string, vars: string[], start: string, end: string): Promise<Series> {
   const q = new URLSearchParams({
     latitude: String(LAT),
     longitude: String(LON),
@@ -91,18 +137,20 @@ async function fetchHourly(base: string, vars: string[], start: string, end: str
     start_date: start,
     end_date: end,
   });
+  // a rate-limit or proxy page may not be JSON: keep the status readable instead of a parse error
+  const readBody = (r: Response) => r.json().catch(() => null);
   let r = await fetch(`${base}?${q}`);
-  let body = await r.json();
+  let body = await readBody(r);
   // The allowed window moves daily; if our clamp is off by one, the error names the real edge.
   if (!r.ok && typeof body?.reason === 'string') {
     const m = /to (\d{4}-\d{2}-\d{2})/.exec(body.reason);
     if (m && m[1] < end && m[1] >= start) {
       q.set('end_date', m[1]);
       r = await fetch(`${base}?${q}`);
-      body = await r.json();
+      body = await readBody(r);
     }
   }
-  if (!r.ok) throw new Error(body?.reason ?? `Open-Meteo HTTP ${r.status}`);
+  if (!r.ok) throw new Error(`HTTP ${r.status}${body?.reason ? `, ${body.reason}` : ''}`);
   return body.hourly as Series;
 }
 
