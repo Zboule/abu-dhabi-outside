@@ -94,8 +94,13 @@ jobs:
       - name: Air levels held for the next run
         continue-on-error: true
         run: |
-          AIR_DATA=station-data/air node scripts/air_hold.mts station-data/forecast/held.json
-          cp station-data/forecast/held.json dist/data/forecast/
+          mkdir -p dist/data/forecast
+          if AIR_DATA=station-data/air node scripts/air_hold.mts station-data/forecast/held.json; then
+            cp station-data/forecast/held.json dist/data/forecast/
+          else
+            # keep the published levels, so the next run still has something to start from
+            curl -fsS https://zboule.github.io/abu-dhabi-outside/data/forecast/held.json -o dist/data/forecast/held.json
+          fi
 
       # the phone widgets' feed (scripts/widget_feed.mts). A deploy replaces the whole site, so
       # when it can't be made the last published one ships again, and the run turns red below

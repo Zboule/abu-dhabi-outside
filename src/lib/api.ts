@@ -85,7 +85,8 @@ type Series = Record<string, (number | null)[]> & { time: string[] };
 // addresses with many people, and Open-Meteo rate-limits by address. So the hourly Action also
 // publishes the recent window of both calls (data/om/, scripts/om_snapshot.sh), and a call that
 // fails is answered from it when it covers the hours asked.
-const SNAPSHOT_MAX_AGE_H = 6;
+// the hourly schedule often runs only every 4-8 hours; an old forecast still beats an empty page
+const SNAPSHOT_MAX_AGE_H = 24;
 const snapshotCache = new Map<string, Promise<(Series & { generated?: string }) | null>>();
 function fetchSnapshot(name: string): Promise<(Series & { generated?: string }) | null> {
   const hit = snapshotCache.get(name);

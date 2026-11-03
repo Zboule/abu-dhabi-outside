@@ -22,13 +22,16 @@ const out = process.argv[2];
 if (!out) throw new Error('usage: air_hold.mts <output.json>');
 const AIR = process.env.AIR_DATA ?? 'station-data/air';
 const FORECAST = process.env.FORECAST_DATA ?? join(dirname(AIR), 'forecast');
+// the Open-Meteo snapshot this run already fetched (om_snapshot.sh): a live call that times out
+// from the runner, which happens a few times a day, is answered from it
+const OM = process.env.OM_DATA ?? 'dist/data/om';
 const SITE = process.env.SITE ?? 'https://zboule.github.io/abu-dhabi-outside/';
 const DAYS = 4; // today and the 3 days the blend reaches
 
 const realFetch = globalThis.fetch;
 globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
   if (input === '/data/forecast/held.json') return realFetch(`${SITE}data/forecast/held.json`, init);
-  const local = typeof input === 'string' ? [['/data/air/', AIR], ['/data/forecast/', FORECAST]].find(([p]) => input.startsWith(p)) : null;
+  const local = typeof input === 'string' ? [['/data/air/', AIR], ['/data/forecast/', FORECAST], ['/data/om/', OM]].find(([p]) => input.startsWith(p)) : null;
   if (local && typeof input === 'string') {
     try {
       return new Response(readFileSync(join(local[1], input.slice(local[0].length))), { headers: { 'content-type': 'application/json' } });
