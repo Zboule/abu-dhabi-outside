@@ -203,6 +203,38 @@ export function OutdoorPage() {
   const firstClock = useRef(true);
   const [error, setError] = useState<string | null>(null);
 
+  // "now" follows the real clock: the page (or the app, which iOS resumes exactly where it left it)
+  // can stay open for hours. Checked every 30 s and whenever the page comes back to the foreground;
+  // a new hour, or coming back after 10+ minutes away, also reloads the data in the background.
+  const [nowKey, setNowKey] = useState(dubaiNowHour);
+  const [reload, setReload] = useState(0);
+  useEffect(() => {
+    let hiddenAt = 0;
+    const sync = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now();
+        return;
+      }
+      const away = hiddenAt && Date.now() - hiddenAt > 10 * 60_000;
+      hiddenAt = 0;
+      setNowKey((prev) => {
+        const k = dubaiNowHour();
+        if (k !== prev || away) setReload((n) => n + 1);
+        return k;
+      });
+    };
+    const timer = setInterval(sync, 30_000);
+    document.addEventListener('visibilitychange', sync);
+    window.addEventListener('pageshow', sync);
+    window.addEventListener('focus', sync);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', sync);
+      window.removeEventListener('pageshow', sync);
+      window.removeEventListener('focus', sync);
+    };
+  }, []);
+
   const [start, end] = rangeOf(preset, from, to, dayOff);
   const th: Thresholds = sensitive ? SENSITIVE : NORMAL;
   // beyond the 16-day forecast: the last 3 years' average for the same dates
@@ -224,7 +256,7 @@ export function OutdoorPage() {
   useEffect(() => {
     let live = true;
     setError(null);
-    loadRange(start, end, forecastEnd, typical)
+    loadRange(start, end, forecastEnd, typical, reload > 0)
       .then((d) => {
         if (!live) return;
         setRaw({ ...d, start, end, dayOff, preset });
@@ -241,7 +273,7 @@ export function OutdoorPage() {
     return () => {
       live = false;
     };
-  }, [start, end, forecastEnd, typical]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [start, end, forecastEnd, typical, reload]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hours = useMemo(() => {
     if (!raw) return null;
@@ -260,7 +292,6 @@ export function OutdoorPage() {
   );
   const span = daysBetween(start, end) + 1;
   const points = useMemo(() => (hours ? chartPoints(hours) : []), [hours]);
-  const nowKey = dubaiNowHour();
   const byTime = useMemo(() => new Map((hours ?? []).map((h) => [h.time, h])), [hours]);
 
   const applyCustom = () => {
@@ -978,10 +1009,11 @@ type Loaded = { plain: HourRaw[]; years: HourRaw[][] | null; start: string; end:
 
 /** One range's rows, cached for 10 minutes so flipping between days (and prefetching) is free. */
 const rangeCache = new Map<string, { at: number; p: Promise<{ plain: HourRaw[]; years: HourRaw[][] | null }> }>();
-function loadRange(start: string, end: string, forecastEnd: string, typical: boolean) {
+function loadRange(start: string, end: string, forecastEnd: string, typical: boolean, fresh = false) {
   const key = `${start}|${end}|${forecastEnd}|${typical}`;
   const hit = rangeCache.get(key);
-  if (hit && Date.now() - hit.at < 10 * 60_000) return hit.p;
+  // `fresh`: the hour turned or the page came back after a while; a 2-minute-old copy is fresh enough
+  if (hit && Date.now() - hit.at < (fresh ? 2 : 10) * 60_000) return hit.p;
   // one extra day before so the 12h NowCast / 8h means are warm at the first shown hour
   const from0 = addDays(start, -1);
   const p = Promise.all([
